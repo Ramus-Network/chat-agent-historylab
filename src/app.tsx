@@ -1,39 +1,57 @@
 // app.tsx
 
+// React hooks for managing component state and lifecycle
 import { useEffect, useState, useRef, useCallback } from "react";
+// Hooks from Cloudflare Agents SDK for frontend integration
 import { useAgent } from "agents-sdk/react";
+// Hook to manage chat interactions with the agent
 import { useAgentChat } from "agents-sdk/ai-react";
+// Type definition for chat messages
 import type { Message } from "@ai-sdk/react";
+// Constants shared between frontend and backend for approval states
 import { APPROVAL } from "./shared";
+// Type import for available tools defined in tools.ts
 import type { tools } from "./tools";
+// UI components from the component library
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Avatar, AvatarFallback } from "./components/ui/avatar";
 import { Switch } from "./components/ui/switch";
+// Icons from the Lucide icon library
 import { Send, Bot, Trash2, Sun, Moon, Bug } from "lucide-react";
 
-
-// List of tools that require human confirmation
+// List of tools that require human confirmation before execution
+// This is used to determine which tool invocations should display confirmation UI
+// These tools must have corresponding executions in the server-side executions object
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
-  "testTool",
+  "testTool", // This matches the testTool defined in tools.ts
 ];
 
 export default function Chat() {
+  // State for theme management (dark/light mode)
+  // Uses localStorage to persist user preference
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
     return (savedTheme as "dark" | "light") || "dark";
   });
+  
+  // State for toggling debug information display
   const [showDebug, setShowDebug] = useState(false);
+  
+  // Reference to the bottom of the messages container for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Function to scroll to the bottom of messages
+  // Wrapped in useCallback to avoid unnecessary re-renders
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  // Effect to apply theme classes to the document
+  // Runs on mount and whenever theme changes
   useEffect(() => {
-    // Apply theme class on mount and when theme changes
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
       document.documentElement.classList.remove("light");
@@ -46,42 +64,51 @@ export default function Chat() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  // Scroll to bottom on mount
+  // Scroll to bottom on component mount
   useEffect(() => {
     scrollToBottom();
   }, [scrollToBottom]);
 
+  // Function to toggle between dark and light theme
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
   };
 
+  // Collection ID for HistoryLab (commented out, now defined on server-side)
   // const COLLECTION_ID = "80650a98-fe49-429a-afbd-9dde66e2d02b"; // history-lab-1
-
   // console.log("COLLECTION_ID", COLLECTION_ID);
 
+  // Initialize the agent connection
+  // This connects to the backend Chat class in server.ts
+  // The 'chat' parameter maps to the Chat class defined in server.ts
+  // The 'name' parameter is used to identify this specific agent instance
   const agent = useAgent({
     agent: "chat",
     name: "user1-historylab-convo2"
   });
 
+  // Hook to manage the chat state and interactions
+  // This communicates with the backend via the agent connection
   const {
-    messages: agentMessages,
-    input: agentInput,
-    handleInputChange: handleAgentInputChange,
-    handleSubmit: handleAgentSubmit,
-    addToolResult,
-    clearHistory,
+    messages: agentMessages,       // Array of message objects from the chat
+    input: agentInput,             // Current input field value
+    handleInputChange: handleAgentInputChange,  // Handler for input changes
+    handleSubmit: handleAgentSubmit,            // Handler for form submission
+    addToolResult,                 // Function to add tool execution results
+    clearHistory,                  // Function to clear chat history
   } = useAgentChat({
-    agent,
-    maxSteps: 5,
+    agent,                         // The agent connection initialized above
+    maxSteps: 5,                   // Maximum number of steps for AI processing
   });
 
-  // Scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     agentMessages.length > 0 && scrollToBottom();
   }, [agentMessages, scrollToBottom]);
 
+  // Check if there are any pending tool calls that need user confirmation
+  // This is used to disable the input field when waiting for confirmation
   const pendingToolCallConfirmation = agentMessages.some((m: Message) =>
     m.parts?.some(
       (part) =>
@@ -93,14 +120,18 @@ export default function Chat() {
     )
   );
 
+  // Format timestamp for message display
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Render the chat interface
   return (
     <div className="h-[100vh] w-full bg-gradient-to-br from-[#F48120]/10 via-background/30 to-[#FAAD3F]/10 backdrop-blur-md p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <div className="bg-background h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-assistant-border/20">
+        {/* Header with title and control buttons */}
         <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-background sticky top-0 z-10">
+          {/* Cloudflare Agents logo */}
           <div className="flex items-center justify-center h-8 w-8">
             <svg
               width="28px"
@@ -123,6 +154,7 @@ export default function Chat() {
             <h2 className="font-semibold text-base">AI Chat Agent</h2>
           </div>
 
+          {/* Debug mode toggle */}
           <div className="flex items-center gap-2 mr-2">
             <Bug className="h-4 w-4 text-muted-foreground/50 dark:text-gray-500" />
             <Switch
@@ -133,6 +165,7 @@ export default function Chat() {
             />
           </div>
 
+          {/* Theme toggle button */}
           <Button
             variant="ghost"
             size="icon"
@@ -146,6 +179,7 @@ export default function Chat() {
             )}
           </Button>
 
+          {/* Clear history button */}
           <Button
             variant="ghost"
             size="icon"
@@ -156,8 +190,9 @@ export default function Chat() {
           </Button>
         </div>
 
-        {/* Messages */}
+        {/* Messages container */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
+          {/* Welcome card for empty chat */}
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center">
               <Card className="bg-secondary/30 border-secondary/50 p-6 max-w-md mx-auto">
@@ -185,6 +220,7 @@ export default function Chat() {
             </div>
           )}
 
+          {/* Render each message in the chat */}
           {agentMessages.map((m: Message, index) => {
             const isUser = m.role === "user";
             const showAvatar =
@@ -193,6 +229,7 @@ export default function Chat() {
 
             return (
               <div key={m.id}>
+                {/* Debug information display when debug mode is enabled */}
                 {showDebug && (
                   <pre className="text-xs text-muted-foreground overflow-scroll">
                     {JSON.stringify(m, null, 2)}
@@ -206,6 +243,7 @@ export default function Chat() {
                       isUser ? "flex-row-reverse" : "flex-row"
                     }`}
                   >
+                    {/* Avatar for assistant messages */}
                     {showAvatar && !isUser ? (
                       <Avatar className="h-8 w-8 mt-1 flex-shrink-0">
                         <AvatarFallback className="bg-[#F48120] text-white">
@@ -218,7 +256,9 @@ export default function Chat() {
 
                     <div>
                       <div>
+                        {/* Render each part of the message (text or tool invocation) */}
                         {m.parts?.map((part, i) => {
+                          // Render text parts as message bubbles
                           if (part.type === "text") {
                             return (
                               // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
@@ -234,6 +274,7 @@ export default function Chat() {
                                       : ""
                                   } relative`}
                                 >
+                                  {/* Special styling for scheduled messages */}
                                   {part.text.startsWith(
                                     "scheduled message"
                                   ) && (
@@ -261,10 +302,12 @@ export default function Chat() {
                             );
                           }
 
+                          // Render tool invocation parts as tool cards with confirmation UI
                           if (part.type === "tool-invocation") {
                             const toolInvocation = part.toolInvocation;
                             const toolCallId = toolInvocation.toolCallId;
 
+                            // Only render confirmation UI for tools that require it and are in call state
                             if (
                               toolsRequiringConfirmation.includes(
                                 toolInvocation.toolName as keyof typeof tools
@@ -299,6 +342,7 @@ export default function Chat() {
                                     </pre>
                                   </div>
 
+                                  {/* Tool confirmation buttons */}
                                   <div className="flex gap-2 justify-end">
                                     <Button
                                       variant="outline"
@@ -331,6 +375,7 @@ export default function Chat() {
                             return null;
                           }
                           return null;
+                          // Commented out debug rendering for other part types
                           // return (
                           //   <div key={i}>
                           //     <Card className="p-3 rounded-2xl bg-secondary border-secondary">
@@ -348,10 +393,11 @@ export default function Chat() {
               </div>
             );
           })}
+          {/* Reference element for auto-scrolling */}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
+        {/* Input form for user messages */}
         <form
           onSubmit={(e) =>
             handleAgentSubmit(e, {
@@ -385,6 +431,7 @@ export default function Chat() {
               />
             </div>
 
+            {/* Send button */}
             <Button
               type="submit"
               size="icon"
