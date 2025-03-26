@@ -18,8 +18,44 @@ import { Card } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Avatar, AvatarFallback } from "./components/ui/avatar";
 import { Switch } from "./components/ui/switch";
+// Markdown rendering components
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 // Icons from the Lucide icon library
-import { Send, Bot, Trash2, Sun, Moon, Bug } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  Clipboard,
+  Clock,
+  CommandIcon,
+  FileText,
+  HelpCircle,
+  Lock,
+  AlertTriangle,
+  Eye,
+  Radio,
+  Terminal,
+  ServerOff,
+  Shield,
+  ShieldAlert,
+  Skull,
+  Cpu,
+  Download,
+  XSquare,
+  MessagesSquare,
+  Mic,
+  MicOff,
+  Moon,
+  Send,
+  Sun,
+  Trash,
+  Volume,
+  Sparkles,
+  RefreshCw,
+} from "lucide-react";
 
 // List of tools that require human confirmation before execution
 // This is used to determine which tool invocations should display confirmation UI
@@ -107,341 +143,287 @@ export default function Chat() {
     agentMessages.length > 0 && scrollToBottom();
   }, [agentMessages, scrollToBottom]);
 
-  // Check if there are any pending tool calls that need user confirmation
-  // This is used to disable the input field when waiting for confirmation
-  const pendingToolCallConfirmation = agentMessages.some((m: Message) =>
-    m.parts?.some(
-      (part) =>
-        part.type === "tool-invocation" &&
-        part.toolInvocation.state === "call" &&
-        toolsRequiringConfirmation.includes(
-          part.toolInvocation.toolName as keyof typeof tools
-        )
-    )
-  );
-
   // Format timestamp for message display
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Render message content with styling and markdown support
+  const renderMessageContent = (text: string, messageId: string) => {
+    return (
+      <div className="whitespace-pre-wrap break-words text-[#5cff5c] markdown-condensed">
+        <ReactMarkdown 
+          rehypePlugins={[rehypeRaw]} 
+          remarkPlugins={[remarkGfm]}
+          components={{
+            // Style different markdown elements while maintaining the terminal green color
+            h1: ({node, ...props}) => <h1 className="text-[#5cff5c] font-bold" {...props} />,
+            h2: ({node, ...props}) => <h2 className="text-[#5cff5c] font-bold" {...props} />,
+            h3: ({node, ...props}) => <h3 className="text-[#5cff5c] font-bold" {...props} />,
+            h4: ({node, ...props}) => <h4 className="text-[#5cff5c] font-bold" {...props} />,
+            p: ({node, ...props}) => <p className="text-[#5cff5c]" {...props} />,
+            a: ({node, ...props}) => <a className="markdown-link" {...props} />,
+            strong: ({node, ...props}) => <strong className="text-[#5cff5c] font-bold" {...props} />,
+            em: ({node, ...props}) => <em className="text-[#5cff5c] italic" {...props} />,
+            ul: ({node, ...props}) => <ul className="text-[#5cff5c] list-disc" {...props} />,
+            ol: ({node, ...props}) => <ol className="text-[#5cff5c] list-decimal" {...props} />,
+            li: ({node, ...props}) => <li className="text-[#5cff5c]" {...props} />,
+            blockquote: ({node, ...props}) => <blockquote className="markdown-blockquote text-[#5cff5c]" {...props} />,
+            code: ({node, inline, className, ...props}: any) => 
+              inline 
+                ? <code className="markdown-code text-[#5cff5c]" {...props} />
+                : <code className="markdown-code-block text-[#5cff5c] block" {...props} />,
+            pre: ({node, ...props}) => <pre className="markdown-code-block text-[#5cff5c]" {...props} />,
+            table: ({node, ...props}) => <table className="markdown-table text-[#5cff5c]" {...props} />,
+            th: ({node, ...props}) => <th className="text-[#5cff5c]" {...props} />,
+            td: ({node, ...props}) => <td className="text-[#5cff5c]" {...props} />,
+            hr: ({node, ...props}) => <hr className="border-[#5cff5c]/30 my-2" {...props} />,
+          }}
+        >
+          {text}
+        </ReactMarkdown>
+      </div>
+    );
+  };
+
+  // Render tool invocation with appropriate UI
+  const renderToolInvocation = (toolInvocation: any, messageId: string, index: number) => {
+    // Simple rendering for tool invocations
+    return (
+      <div key={`${messageId}-tool-${index}`} className="bg-black/40 p-2 my-2 document-border">
+        <div className="font-mono text-xs text-[#E0E0E0] mb-1">
+          Tool: {toolInvocation.toolName}
+        </div>
+        {toolInvocation.state === 'result' && (
+          <div className="font-mono text-xs text-[#5cff5c]">
+            Result: {JSON.stringify(toolInvocation.result).substring(0, 100)}...
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Render the chat interface
   return (
-    <div className="h-[100vh] w-full bg-gradient-to-br from-[#F48120]/10 via-background/30 to-[#FAAD3F]/10 backdrop-blur-md p-4 flex justify-center items-center bg-fixed overflow-hidden">
-      <div className="bg-background h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-assistant-border/20">
-        {/* Header with title and control buttons */}
-        <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-background sticky top-0 z-10">
-          {/* Cloudflare Agents logo */}
-          <div className="flex items-center justify-center h-8 w-8">
-            <svg
-              width="28px"
-              height="28px"
-              className="text-[#F48120]"
-              data-icon="agents"
-            >
-              <title>Cloudflare Agents</title>
-              <symbol id="ai:local:agents" viewBox="0 0 80 79">
-                <path
-                  fill="currentColor"
-                  d="M69.3 39.7c-3.1 0-5.8 2.1-6.7 5H48.3V34h4.6l4.5-2.5c1.1.8 2.5 1.2 3.9 1.2 3.8 0 7-3.1 7-7s-3.1-7-7-7-7 3.1-7 7c0 .9.2 1.8.5 2.6L51.9 30h-3.5V18.8h-.1c-1.3-1-2.9-1.6-4.5-1.9h-.2c-1.9-.3-3.9-.1-5.8.6-.4.1-.8.3-1.2.5h-.1c-.1.1-.2.1-.3.2-1.7 1-3 2.4-4 4 0 .1-.1.2-.1.2l-.3.6c0 .1-.1.1-.1.2v.1h-.6c-2.9 0-5.7 1.2-7.7 3.2-2.1 2-3.2 4.8-3.2 7.7 0 .7.1 1.4.2 2.1-1.3.9-2.4 2.1-3.2 3.5s-1.2 2.9-1.4 4.5c-.1 1.6.1 3.2.7 4.7s1.5 2.9 2.6 4c-.8 1.8-1.2 3.7-1.1 5.6 0 1.9.5 3.8 1.4 5.6s2.1 3.2 3.6 4.4c1.3 1 2.7 1.7 4.3 2.2v-.1q2.25.75 4.8.6h.1c0 .1.1.1.1.1.9 1.7 2.3 3 4 4 .1.1.2.1.3.2h.1c.4.2.8.4 1.2.5 1.4.6 3 .8 4.5.7.4 0 .8-.1 1.3-.1h.1c1.6-.3 3.1-.9 4.5-1.9V62.9h3.5l3.1 1.7c-.3.8-.5 1.7-.5 2.6 0 3.8 3.1 7 7 7s7-3.1 7-7-3.1-7-7-7c-1.5 0-2.8.5-3.9 1.2l-4.6-2.5h-4.6V48.7h14.3c.9 2.9 3.5 5 6.7 5 3.8 0 7-3.1 7-7s-3.1-7-7-7m-7.9-16.9c1.6 0 3 1.3 3 3s-1.3 3-3 3-3-1.3-3-3 1.4-3 3-3m0 41.4c1.6 0 3 1.3 3 3s-1.3 3-3 3-3-1.3-3-3 1.4-3 3-3M44.3 72c-.4.2-.7.3-1.1.3-.2 0-.4.1-.5.1h-.2c-.9.1-1.7 0-2.6-.3-1-.3-1.9-.9-2.7-1.7-.7-.8-1.3-1.7-1.6-2.7l-.3-1.5v-.7q0-.75.3-1.5c.1-.2.1-.4.2-.7s.3-.6.5-.9c0-.1.1-.1.1-.2.1-.1.1-.2.2-.3s.1-.2.2-.3c0 0 0-.1.1-.1l.6-.6-2.7-3.5c-1.3 1.1-2.3 2.4-2.9 3.9-.2.4-.4.9-.5 1.3v.1c-.1.2-.1.4-.1.6-.3 1.1-.4 2.3-.3 3.4-.3 0-.7 0-1-.1-2.2-.4-4.2-1.5-5.5-3.2-1.4-1.7-2-3.9-1.8-6.1q.15-1.2.6-2.4l.3-.6c.1-.2.2-.4.3-.5 0 0 0-.1.1-.1.4-.7.9-1.3 1.5-1.9 1.6-1.5 3.8-2.3 6-2.3q1.05 0 2.1.3v-4.5c-.7-.1-1.4-.2-2.1-.2-1.8 0-3.5.4-5.2 1.1-.7.3-1.3.6-1.9 1s-1.1.8-1.7 1.3c-.3.2-.5.5-.8.8-.6-.8-1-1.6-1.3-2.6-.2-1-.2-2 0-2.9.2-1 .6-1.9 1.3-2.6.6-.8 1.4-1.4 2.3-1.8l1.8-.9-.7-1.9c-.4-1-.5-2.1-.4-3.1s.5-2.1 1.1-2.9q.9-1.35 2.4-2.1c.9-.5 2-.8 3-.7.5 0 1 .1 1.5.2 1 .2 1.8.7 2.6 1.3s1.4 1.4 1.8 2.3l4.1-1.5c-.9-2-2.3-3.7-4.2-4.9q-.6-.3-.9-.6c.4-.7 1-1.4 1.6-1.9.8-.7 1.8-1.1 2.9-1.3.9-.2 1.7-.1 2.6 0 .4.1.7.2 1.1.3V72zm25-22.3c-1.6 0-3-1.3-3-3 0-1.6 1.3-3 3-3s3 1.3 3 3c0 1.6-1.3 3-3 3"
-                />
-              </symbol>
-              <use href="#ai:local:agents" />
-            </svg>
-          </div>
+    <div className="flex min-h-screen w-full flex-col bg-background antialiased transition-all pb-0">
+      <header className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-white/10 shadow-lg">
+        <div className="container flex h-14 items-center px-4 md:px-6">
+          <div className="flex flex-1 items-center space-x-2 md:justify-between justify-end">
+            <div className="w-full flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                {/* <FileText className="h-5 w-5 text-[#5cff5c] mr-1" /> */}
+                <span className="font-mono text-xl text-[#E0E0E0] tracking-wider">
+                  HISTORY LAB DOCUMENT INTERFACE
+                </span>
+              </div>
 
-          <div className="flex-1">
-            <h2 className="font-semibold text-base">AI Chat Agent</h2>
-          </div>
-
-          {/* Debug mode toggle */}
-          <div className="flex items-center gap-2 mr-2">
-            <Bug className="h-4 w-4 text-muted-foreground/50 dark:text-gray-500" />
-            <Switch
-              checked={showDebug}
-              onCheckedChange={setShowDebug}
-              aria-label="Toggle debug mode"
-              className="data-[state=checked]:bg-gray-500 data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-700"
-            />
-          </div>
-
-          {/* Theme toggle button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full h-9 w-9"
-            onClick={toggleTheme}
-          >
-            {theme === "dark" ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )}
-          </Button>
-
-          {/* Clear history button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full h-9 w-9"
-            onClick={clearHistory}
-          >
-            <Trash2 className="h-5 w-5" />
-          </Button>
-        </div>
-
-        {/* Messages container */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
-          {/* Welcome card for empty chat */}
-          {agentMessages.length === 0 && (
-            <div className="h-full flex items-center justify-center">
-              <Card className="bg-secondary/30 border-secondary/50 p-6 max-w-md mx-auto">
-                <div className="text-center space-y-4">
-                  <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
-                    <Bot className="h-6 w-6" />
-                  </div>
-                  <h3 className="font-semibold text-lg">Welcome to AI Chat</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Start a conversation with your AI assistant. Try asking
-                    about:
-                  </p>
-                  <ul className="text-sm text-left space-y-2">
-                    <li className="flex items-center gap-2">
-                      <span className="text-[#F48120]">•</span>
-                      <span>Weather information for any city</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="text-[#F48120]">•</span>
-                      <span>Local time in different locations</span>
-                    </li>
-                  </ul>
+              <div className="flex items-center gap-3">
+                <div className="digital-display hidden md:flex">
+                  <Clock className="h-3.5 w-3.5 mr-1.5 text-[#E0E0E0]" />
+                  <time dateTime={new Date().toISOString()} className="text-xs font-mono tracking-wide text-[#E0E0E0]">
+                    {new Date().toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                    })}
+                  </time>
                 </div>
-              </Card>
-            </div>
-          )}
 
-          {/* Render each message in the chat */}
-          {agentMessages.map((m: Message, index) => {
-            const isUser = m.role === "user";
-            const showAvatar =
-              index === 0 || agentMessages[index - 1]?.role !== m.role;
-            const showRole = showAvatar && !isUser;
-
-            return (
-              <div key={m.id}>
-                {/* Debug information display when debug mode is enabled */}
-                {showDebug && (
-                  <pre className="text-xs text-muted-foreground overflow-scroll">
-                    {JSON.stringify(m, null, 2)}
-                  </pre>
-                )}
-                <div
-                  className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`flex gap-2 max-w-[85%] ${
-                      isUser ? "flex-row-reverse" : "flex-row"
-                    }`}
+                <div className="flex items-center">
+                  <button
+                    onClick={clearHistory}
+                    className="inline-flex h-9 w-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    {/* Avatar for assistant messages */}
-                    {showAvatar && !isUser ? (
-                      <Avatar className="h-8 w-8 mt-1 flex-shrink-0">
-                        <AvatarFallback className="bg-[#F48120] text-white">
-                          AI
-                        </AvatarFallback>
-                      </Avatar>
-                    ) : (
-                      !isUser && <div className="w-8" />
-                    )}
+                    <Trash className="h-4 w-4 icon-visible" />
+                    <span className="sr-only">Clear history</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+      <div className="flex-1 overflow-hidden">
+        <div className="glass-panel mx-auto max-w-5xl mt-4 mb-0 flex-1 overflow-hidden px-4 lg:px-8 py-0">
+          <div className="flex flex-col h-[calc(100vh-7.5rem)] overflow-hidden">
+            {/* Message interface */}
+            <div className="flex-1 overflow-y-auto mt-2" ref={messagesEndRef}>
+              <div className="pb-[80px]">
+                {agentMessages.length === 0 ? (
+                  <div className="glass-panel p-4 m-4 mt-8">
+                    <div className="document-border p-4 bg-black/60">
+                      <h4 className="font-mono text-[#E0E0E0] mb-2 text-left text-sm">HISTORY LAB RESEARCH ASSISTANT</h4>
+                      <div className="markdown-condensed text-[#5cff5c] text-sm text-left mb-3 font-mono">
+                        {renderMessageContent(`
+# Welcome to HistoryLab AI
 
-                    <div>
-                      <div>
-                        {/* Render each part of the message (text or tool invocation) */}
-                        {m.parts?.map((part, i) => {
-                          // Render text parts as message bubbles
-                          if (part.type === "text") {
-                            return (
-                              // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
-                              <div key={i}>
-                                <Card
-                                  className={`p-3 rounded-md ${
-                                    isUser
-                                      ? "bg-primary text-primary-foreground rounded-br-none"
-                                      : "rounded-bl-none border-assistant-border"
-                                  } ${
-                                    part.text.startsWith("scheduled message")
-                                      ? "border-accent/50"
-                                      : ""
-                                  } relative`}
-                                >
-                                  {/* Special styling for scheduled messages */}
-                                  {part.text.startsWith(
-                                    "scheduled message"
-                                  ) && (
-                                    <span className="absolute -top-3 -left-2 text-base">
-                                      🕒
-                                    </span>
-                                  )}
-                                  <p className="text-sm whitespace-pre-wrap">
-                                    {part.text.replace(
-                                      /^scheduled message: /,
-                                      ""
-                                    )}
-                                  </p>
-                                </Card>
-                                <p
-                                  className={`text-xs text-muted-foreground mt-1 ${
-                                    isUser ? "text-right" : "text-left"
-                                  }`}
-                                >
-                                  {formatTime(
-                                    new Date(m.createdAt as unknown as string)
-                                  )}
-                                </p>
-                              </div>
-                            );
-                          }
+An advanced research assistant specialized in analyzing historical documents and helping explore declassified archives.
 
-                          // Render tool invocation parts as tool cards with confirmation UI
-                          if (part.type === "tool-invocation") {
-                            const toolInvocation = part.toolInvocation;
-                            const toolCallId = toolInvocation.toolCallId;
+## Available Document Collections
 
-                            // Only render confirmation UI for tools that require it and are in call state
-                            if (
-                              toolsRequiringConfirmation.includes(
-                                toolInvocation.toolName as keyof typeof tools
-                              ) &&
-                              toolInvocation.state === "call"
-                            ) {
-                              return (
-                                <Card
-                                  // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
-                                  key={i}
-                                  className="p-4 my-3 bg-secondary/30 border-secondary/50 rounded-md"
-                                >
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <div className="bg-[#F48120]/10 p-1.5 rounded-full">
-                                      <Bot className="h-4 w-4 text-[#F48120]" />
-                                    </div>
-                                    <h4 className="font-medium">
-                                      {toolInvocation.toolName}
-                                    </h4>
-                                  </div>
+Access collections including:
 
-                                  <div className="mb-3">
-                                    <h5 className="text-xs font-medium mb-1 text-muted-foreground">
-                                      Arguments:
-                                    </h5>
-                                    <pre className="bg-background/80 p-2 rounded-md text-xs overflow-auto">
-                                      {JSON.stringify(
-                                        toolInvocation.args,
-                                        null,
-                                        2
-                                      )}
-                                    </pre>
-                                  </div>
+* **Central Foreign Policy Files** (1.67M documents) - US State Department communications
+* **CIA documents** (~440K) - Declassified intelligence reports and assessments
+* **Foreign Relations of the United States** (~159K) - Diplomatic correspondence
+* **UN documents** (~93K) - Resolutions, reports, and official communications
+* **World Bank reports** (~68K) - Documents on global development and economic policy
+* **Clinton administration documents** (~30K) - Records from the 1990s US presidency
 
-                                  {/* Tool confirmation buttons */}
-                                  <div className="flex gap-2 justify-end">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() =>
-                                        addToolResult({
-                                          toolCallId,
-                                          result: APPROVAL.NO,
-                                        })
-                                      }
-                                    >
-                                      Reject
-                                    </Button>
-                                    <Button
-                                      variant="default"
-                                      size="sm"
-                                      onClick={() =>
-                                        addToolResult({
-                                          toolCallId,
-                                          result: APPROVAL.YES,
-                                        })
-                                      }
-                                    >
-                                      Approve
-                                    </Button>
-                                  </div>
-                                </Card>
-                              );
-                            }
-                            return null;
-                          }
-                          return null;
-                          // Commented out debug rendering for other part types
-                          // return (
-                          //   <div key={i}>
-                          //     <Card className="p-3 rounded-2xl bg-secondary border-secondary">
-                          //       <pre className="text-xs">
-                          //         {JSON.stringify(part, null, 2)}
-                          //       </pre>
-                          //     </Card>
-                          //   </div>
-                          // );
-                        })}
+> Ask questions about historical events, people, or periods to search through these archives.
+`, 'welcome')}
                       </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  agentMessages.map((m: Message, index) => {
+                    const isUser = m.role === "user";
+                    const showAvatar =
+                      index === 0 || agentMessages[index - 1]?.role !== m.role;
+                    const showRole = showAvatar && !isUser;
+
+                    return (
+                      <div
+                        className={`mb-4 flex flex-col ${
+                          isUser ? "items-end" : "items-start"
+                        }`}
+                        key={m.id}
+                      >
+                        <div
+                          className={`flex w-full max-w-4xl ${
+                            isUser ? "justify-end" : "justify-start"
+                          }`}
+                        >
+                          <div
+                            className={`rounded-sm flex flex-col ${
+                              isUser
+                                ? "bg-secondary/30 backdrop-blur-sm document-border mr-2"
+                                : "bg-black/40 backdrop-blur-sm document-border ml-2"
+                            } w-fit max-w-[86%]`}
+                          >
+                            <div
+                              className={`terminal-header justify-between ${
+                                isUser ? "bg-secondary/50" : "bg-black"
+                              }`}
+                            >
+                              <div className="flex items-center">
+                                {isUser ? (
+                                  <CommandIcon className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
+                                ) : (
+                                  <FileText className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
+                                )}
+                                <span className="font-mono text-xs tracking-widest text-[#E0E0E0]">
+                                  {isUser ? "RESEARCHER" : "ASSISTANT"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <time
+                                  dateTime={m.createdAt?.toString() ?? new Date().toString()}
+                                  className="text-[10px] text-[#E0E0E0] font-mono"
+                                >
+                                  {formatTime(new Date(m.createdAt ?? new Date()))}
+                                </time>
+                                {!isUser && (
+                                  <div className="font-mono bg-black/50 text-[10px] px-1 text-[#E0E0E0] border border-[#5cff5c]/20">
+                                    HISTORYLAB
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="px-4 py-3 text-sm text-[#5cff5c] font-mono">
+                              {!m.parts || m.parts.length === 0 ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[#5cff5c]/70 text-xs">Processing query...</span>
+                                </div>
+                              ) : (
+                                m.parts?.map((part, i) => {
+                                  // Render text parts as message bubbles
+                                  if (part.type === "text") {
+                                    return (
+                                      <div key={i} className="relative">
+                                        {renderMessageContent(part.text, m.id)}
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  // Render tool invocation parts
+                                  if (part.type === "tool-invocation") {
+                                    return renderToolInvocation(part.toolInvocation, m.id, i);
+                                  }
+                                  
+                                  return null;
+                                })
+                              )}
+                            </div>
+                          </div>
+                          <div
+                            className={`h-8 w-8 overflow-hidden document-border flex-none ${
+                              isUser ? "order-last ml-2" : "order-first mr-2"
+                            }`}
+                          >
+                            {isUser ? (
+                              <div className="h-full w-full bg-secondary/30 flex items-center justify-center">
+                                <CommandIcon className="h-4 w-4 text-[#E0E0E0]" />
+                              </div>
+                            ) : (
+                              <div className="h-full w-full bg-black/40 flex items-center justify-center">
+                                <FileText className="h-4 w-4 text-[#E0E0E0]" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            );
-          })}
-          {/* Reference element for auto-scrolling */}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input form for user messages */}
-        <form
-          onSubmit={(e) =>
-            handleAgentSubmit(e, {
-              data: {
-                annotations: {
-                  hello: "world",
-                },
-              },
-            })
-          }
-          className="p-3 bg-input-background absolute bottom-0 left-0 right-0 z-10 border-t border-assistant-border/30"
-        >
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <Input
-                disabled={pendingToolCallConfirmation}
-                placeholder={
-                  pendingToolCallConfirmation
-                    ? "Please respond to the tool confirmation above..."
-                    : "Type your message..."
-                }
-                className="pr-10 py-6 rounded-full bg-muted border-muted"
-                value={agentInput}
-                onChange={handleAgentInputChange}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAgentSubmit(e as unknown as React.FormEvent);
-                  }
-                }}
-              />
             </div>
-
-            {/* Send button */}
-            <Button
-              type="submit"
-              size="icon"
-              className="rounded-full h-10 w-10 flex-shrink-0"
-              disabled={pendingToolCallConfirmation || !agentInput.trim()}
-            >
-              <Send className="h-5 w-5" />
-            </Button>
+            
+            {/* Input interface */}
+            <div className="bg-black/60 backdrop-blur-md sticky bottom-0 border-t border-white/10 py-4">
+              <form
+                onSubmit={(e) =>
+                  handleAgentSubmit(e, {
+                    data: {
+                      annotations: {
+                        hello: "world",
+                      },
+                    },
+                  })
+                }
+                className="flex items-center space-x-2 mx-4"
+              >
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    <span className="font-mono text-xs text-[#E0E0E0]/80">SEARCH ARCHIVES:</span>
+                  </div>
+                  <input
+                    placeholder="Enter your research query..."
+                    className="document-border w-full bg-black/30 backdrop-blur-md py-2 px-4 text-[#E0E0E0] shadow-sm font-mono text-sm placeholder:text-[#E0E0E0]/50 focus:outline-none focus:ring-1 focus:ring-[#5cff5c]/50"
+                    value={agentInput}
+                    onChange={handleAgentInputChange}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleAgentSubmit(e as unknown as React.FormEvent);
+                      }
+                    }}
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <Mic className="h-4 w-4 text-[#E0E0E0]/70" />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="document-border bg-black/40 text-[#E0E0E0] hover:bg-[#5cff5c]/10 px-4 py-2 font-mono text-sm font-medium shadow-sm focus:outline-none focus:ring-1 focus:ring-[#5cff5c]/50"
+                >
+                  <Send className="h-4 w-4" />
+                  <span className="sr-only">Send</span>
+                </button>
+              </form>
+            </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

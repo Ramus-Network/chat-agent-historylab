@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "history-lab-chat-agent",
+	"name": "history-lab-chat-agent-2",
 	"main": "src/server.ts",
 	"compatibility_date": "2025-02-04",
 	"compatibility_flags": [

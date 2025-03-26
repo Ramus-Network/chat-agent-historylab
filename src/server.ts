@@ -62,6 +62,7 @@ export class Chat extends AIChatAgent<Env> {
   public getVectorizeSearch() {
     return this.env.VECTORIZE_SEARCH;
   }
+
   /**
    * Handles incoming chat messages and manages the response stream
    * @param onFinish - Callback function executed when streaming completes
@@ -174,6 +175,10 @@ export class Chat extends AIChatAgent<Env> {
                 Appropriate corpus filter: "clinton"
 
               Always adapt your search strategy based on the results you receive. If a search doesn't yield useful results, try reformulating the query or adjusting filters. Explain your reasoning to the user.
+
+              RESPONSE FORMAT:
+              - Use markdown formatting for the response.
+              - Make sure to cite your sources. Provide a link to the document using the following format: [View Document](https://r2-text-viewer.nchimicles.workers.dev/{file_key}) (e.g. https://r2-text-viewer.nchimicles.workers.dev/0000000001/80650a98-fe49-429a-afbd-9dde66e2d02b/000062a6-7ae7-4043-8d97-9c6e4012bb1b/507922_un.txt)
 
               IMPORTANT INFORMATION:              
               - Collection ID: ${collectionId}                         

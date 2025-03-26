@@ -50,6 +50,9 @@
     "lucide-react": "^0.477.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.0.2",
     "workers-ai-provider": "^0.1.1",
     "zod": "^3.24.2"
