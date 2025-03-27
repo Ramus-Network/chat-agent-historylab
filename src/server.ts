@@ -24,7 +24,7 @@ import { logDebug, logInfo } from "./shared";
 // Environment variables type definition
 export type Env = {
   OPENAI_API_KEY: string;
-  DB: D1Database;
+  BUCKET: R2Bucket;
   Chat: AgentNamespace<Chat>;
   VECTORIZE_SEARCH: {
     findSimilarEmbeddings(
@@ -55,8 +55,8 @@ export const agentContext = new AsyncLocalStorage<Chat>();
  */
 export class Chat extends AIChatAgent<Env> {
 
-  public getDatabase() {
-    return this.env.DB;
+  public getBucket() {
+    return this.env.BUCKET;
   }
 
   public getVectorizeSearch() {
@@ -129,6 +129,9 @@ export class Chat extends AIChatAgent<Env> {
                 * corpus: Optional filter for specific document collections (see below)
                 * doc_id: Optional filter for a specific document ID
                 * authored_start/authored_end: Optional date range filters (YYYY-MM-DD format)
+
+              - getDocumentText: This tool allows you to get the text of a given document from the R2 bucket using the file key path. The parameters include:
+                * fileKey: The file key path of the document to get the text of
 
               DOCUMENT COLLECTIONS (CORPORA):
               You have access to the following historical document collections:

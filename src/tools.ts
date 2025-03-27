@@ -124,6 +124,30 @@ const testTool = tool({
 // });
 
 /**
+ * Get the text of a given document from the R2 bucket using the file key path
+ */
+const getDocumentText = tool({
+  description: "get the text of a given document from the R2 bucket",
+  parameters: z.object({ fileKey: z.string() }),
+  execute: async ({ fileKey }) => {
+    logInfo("getDocumentText", `Getting document text for document: ${fileKey}`);
+
+    try {
+      const agent = getAgent();
+      const bucket = agent.getBucket();
+      const file = await bucket.get(fileKey);
+      if (!file) {
+        return { error: "File not found" };
+      }
+      const text = await file.text();
+      return text;
+    } catch (error) {
+      logDebug("getDocumentText", `Error getting document text: ${error}`);
+      return { error: "Failed to get document text" };
+    }
+  },
+});
+/**
  * Query a given collection using a vector search
  * 
  * This tool allows for semantic searching through historical document collections with various filtering options:
@@ -258,6 +282,7 @@ export const tools = {
   // getCollectionInfo,
   // listCollectionContents,
   queryCollection,
+  getDocumentText,
   testTool
 };
 

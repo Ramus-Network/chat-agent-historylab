@@ -9,52 +9,22 @@ import { useAgentChat } from "agents-sdk/ai-react";
 // Type definition for chat messages
 import type { Message } from "@ai-sdk/react";
 // Constants shared between frontend and backend for approval states
-import { APPROVAL } from "./shared";
+
 // Type import for available tools defined in tools.ts
 import type { tools } from "./tools";
 // UI components from the component library
-import { Button } from "./components/ui/button";
-import { Card } from "./components/ui/card";
-import { Input } from "./components/ui/input";
-import { Avatar, AvatarFallback } from "./components/ui/avatar";
-import { Switch } from "./components/ui/switch";
 // Markdown rendering components
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 // Icons from the Lucide icon library
 import {
-  AlertCircle,
-  ChevronDown,
-  ChevronUp,
-  CircleAlert,
-  Clipboard,
   Clock,
   CommandIcon,
   FileText,
-  HelpCircle,
-  Lock,
-  AlertTriangle,
-  Eye,
-  Radio,
-  Terminal,
-  ServerOff,
-  Shield,
-  ShieldAlert,
-  Skull,
-  Cpu,
-  Download,
-  XSquare,
-  MessagesSquare,
   Mic,
-  MicOff,
-  Moon,
   Send,
-  Sun,
   Trash,
-  Volume,
-  Sparkles,
-  RefreshCw,
 } from "lucide-react";
 
 // List of tools that require human confirmation before execution
@@ -71,6 +41,18 @@ export default function Chat() {
     // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
     return (savedTheme as "dark" | "light") || "dark";
+  });
+  
+  // State for conversation ID (persisted in localStorage)
+  const [conversationId, setConversationId] = useState(() => {
+    // Try to retrieve existing conversation ID from localStorage
+    const savedId = localStorage.getItem('historyLabConversationId');
+    if (savedId) return savedId;
+    
+    // Create a new conversation ID if none exists
+    const newId = `historylab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    localStorage.setItem('historyLabConversationId', newId);
+    return newId;
   });
   
   // State for toggling debug information display
@@ -111,6 +93,15 @@ export default function Chat() {
     setTheme(newTheme);
   };
 
+  // Function to create a new conversation
+  const createNewConversation = () => {
+    const newId = `historylab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    localStorage.setItem('historyLabConversationId', newId);
+    setConversationId(newId);
+    // Clear chat history when starting a new conversation
+    clearHistory();
+  };
+
   // Collection ID for HistoryLab (commented out, now defined on server-side)
   // const COLLECTION_ID = "80650a98-fe49-429a-afbd-9dde66e2d02b"; // history-lab-1
   // console.log("COLLECTION_ID", COLLECTION_ID);
@@ -121,7 +112,7 @@ export default function Chat() {
   // The 'name' parameter is used to identify this specific agent instance
   const agent = useAgent({
     agent: "chat",
-    name: "user1-historylab-convo2"
+    name: conversationId
   });
 
   // Hook to manage the chat state and interactions
@@ -229,7 +220,13 @@ export default function Chat() {
                   </time>
                 </div>
 
-                <div className="flex items-center">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={createNewConversation}
+                    className="inline-flex h-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-[#E0E0E0] text-xs"
+                  >
+                    <span>NEW CONV</span>
+                  </button>
                   <button
                     onClick={clearHistory}
                     className="inline-flex h-9 w-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

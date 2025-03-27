@@ -32,17 +32,23 @@
 	"observability": {
 		"enabled": true
 	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "Ramus-db",
-			"database_id": "43ddebd9-80de-40fb-9544-dd84927bf64d"
-		}
-	],
+	"r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "ramus-files",
+      "preview_bucket_name": "ramus-files-preview"
+    }
+  ],
   "services": [
     { 
         "binding": "VECTORIZE_SEARCH", // what you call it in the code
         "service": "vector-search-worker" // the actual worker name        
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "history-lab.ramus.network",
+      "custom_domain": true
     }
   ]
   /**
