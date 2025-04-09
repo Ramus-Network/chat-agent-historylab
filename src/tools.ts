@@ -34,95 +34,6 @@ const testTool = tool({
   },
 });
 
-// /**
-//  * Get collection information from the D1 database
-//  * Returns metadata about a collection including name, description, owner, etc.
-//  */
-// const getCollectionInfo = tool({
-//   description: "get the collection information for a given collection id",
-//   parameters: z.object({ collectionId: z.string() }),
-//   execute: async ({ collectionId }) => {
-//     logInfo("getCollectionInfo", `Getting collection information for collection: ${collectionId}`);
-    
-//     try {
-//       const agent = getAgent();      
-//       const db = agent.getDatabase();
-//       const collection = await db
-//         .prepare(`
-//           SELECT 
-//             id, name, description, owner_id, is_public, created_at, updated_at 
-//           FROM collections 
-//           WHERE id = ?
-//         `)
-//         .bind(collectionId)
-//         .first();
-      
-//       if (!collection) {
-//         return { error: `Collection with ID ${collectionId} not found` };
-//       }
-
-//       return {
-//         id: collection.id,
-//         name: collection.name,
-//         description: collection.description,
-//         owner_id: collection.owner_id,
-//         is_public: Boolean(collection.is_public),
-//         created_at: collection.created_at,
-//         updated_at: collection.updated_at
-//       };
-//     } catch (error) {
-//       logDebug("getCollectionInfo", `Error fetching collection: ${error}`);
-//       return { error: "Failed to fetch collection information" };
-//     }
-//   },
-// });
-
-
-// // NOTE TO SELF: MAKE SURE THAT COLLECTION ID IS AN INDEXED FIELD IN THE DATABASE
-// /**
-//  * List up to 10 files from a collection with their metadata
-//  */
-// const listCollectionContents = tool({
-//   description: "list the contents of a given collection by id",
-//   parameters: z.object({ collectionId: z.string() }),
-//   execute: async ({ collectionId }) => {
-//     logInfo("listCollectionContents", `Listing contents of collection: ${collectionId}`);
-    
-//     try {
-//       const agent = getAgent();
-//       const db = agent.getDatabase();
-      
-//       const files = await db
-//         .prepare(`
-//           SELECT 
-//             id, name, size, type, r2_key, collection_id, 
-//             owner_id, status, created_at, updated_at
-//           FROM files 
-//           WHERE collection_id = ?
-//           LIMIT 10
-//         `)
-//         .bind(collectionId)
-//         .all();
-      
-//       if (!files?.results?.length) {
-//         return { error: `No files found in collection ${collectionId}` };
-//       }
-
-//       return {
-//         count: files.results.length,
-//         files: files.results.map(file => ({
-//           ...file,
-//           created_at: file.created_at,
-//           updated_at: file.updated_at
-//         }))
-//       };
-//     } catch (error) {
-//       logDebug("listCollectionContents", `Error fetching files: ${error}`);
-//       return { error: "Failed to fetch collection contents" };
-//     }
-//   },
-// });
-
 /**
  * Get the text of a given document from the R2 bucket using the file key path
  */
@@ -239,6 +150,8 @@ const queryCollection = tool({
           filters.authored.$lte = new Date(authored_end).getTime();
         }
       }
+      
+      collectionId = "80650a98-fe49-429a-afbd-9dde66e2d02b" // history-lab-1
       
       // Create metadata object for the search if filters are present
       const metadata = Object.keys(filters).length > 0 ? { filter: filters } : undefined;

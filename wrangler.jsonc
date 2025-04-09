@@ -4,7 +4,8 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "history-lab-chat-agent-2",
+	// Make sure this is history-lab-chat-agent-2 for deployment
+  "name": "history-lab-chat-agent-2",
 	"main": "src/server.ts",
 	"compatibility_date": "2025-02-04",
 	"compatibility_flags": [
@@ -45,6 +46,7 @@
         "service": "vector-search-worker" // the actual worker name        
     }
   ],
+  // this should be uncommented for deployment
   "routes": [
     {
       "pattern": "history-lab.ramus.network",

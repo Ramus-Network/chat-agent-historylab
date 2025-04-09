@@ -64,6 +64,7 @@ export async function processToolCalls<
   const processedParts = await Promise.all(
     parts.map(async (part) => {
       // Only process tool invocations parts
+      logDebug("processToolCalls", "Processing part", { part });
       if (part.type !== "tool-invocation") {
         logDebug("processToolCalls", "Skipping non-tool-invocation part", { partType: part.type });
         return part;
