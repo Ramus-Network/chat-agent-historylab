@@ -5,7 +5,8 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	// Make sure this is history-lab-chat-agent-2 for deployment
-  "name": "history-lab-chat-agent-2",
+  // "name": "history-lab-chat-agent-2",
+  "name": "history-lab-chat-agent-3",
 	"main": "src/server.ts",
 	"compatibility_date": "2025-02-04",
 	"compatibility_flags": [
@@ -46,13 +47,21 @@
         "service": "vector-search-worker" // the actual worker name        
     }
   ],
-  // this should be uncommented for deployment
-  "routes": [
+  "kv_namespaces": [
     {
-      "pattern": "history-lab.ramus.network",
-      "custom_domain": true
+      "binding": "CONVERSATION_LOGS",
+      "id": "6f4a584d2e174271b94c80fb51760378",
+      "preview_id": "78e0c04db7084b7dba06ecc625923e8c"
     }
   ]
+  // ,
+  // this should be uncommented for deployment
+  // "routes": [
+  //   {
+  //     "pattern": "history-lab.ramus.network",
+  //     "custom_domain": true
+  //   }
+  // ]
   /**
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

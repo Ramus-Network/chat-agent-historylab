@@ -31,12 +31,48 @@ import {
   Check,
 } from "lucide-react";
 
+// Collection ID constant (matches the server-side constant)
+const COLLECTION_ID = '80650a98-fe49-429a-afbd-9dde66e2d02b'; // history-lab-1
+
 // List of tools that require human confirmation before execution
 // This is used to determine which tool invocations should display confirmation UI
 // These tools must have corresponding executions in the server-side executions object
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
   "testTool", // This matches the testTool defined in tools.ts
 ];
+
+// Simple hash function to obfuscate the ID components
+function hashComponents(userId: string, collectionId: string, conversationId: string): string {
+  // Create a string with all components separated by a delimiter that won't appear in the IDs
+  const combined = `${userId}|${collectionId}|${conversationId}`;
+  
+  // Use btoa for base64 encoding (simple obfuscation, not secure encryption)
+  // Note: For environments where btoa is not available, we would need to use 
+  // a different approach, like Buffer in Node.js. Here we're in a browser context.
+  // For true security, we'd use a proper encryption algorithm.
+  return btoa(combined);
+}
+
+// Function to decode the hashed components (server-side counterpart)
+function decodeHashedComponents(hash: string): { userId: string, collectionId: string, conversationId: string } {
+  try {
+    // Decode the base64 string
+    const decoded = atob(hash);
+    
+    // Split by the delimiter
+    const [userId, collectionId, conversationId] = decoded.split('|');
+    
+    return { userId, collectionId, conversationId };
+  } catch (e) {
+    console.error('Failed to decode hashed components:', e);
+    // Return fallback values if decoding fails
+    return { 
+      userId: 'unknown', 
+      collectionId: COLLECTION_ID, 
+      conversationId: `fallback-${Date.now()}`
+    };
+  }
+}
 
 export default function Chat() {
   // State for theme management (dark/light mode)
@@ -45,6 +81,27 @@ export default function Chat() {
     // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
     return (savedTheme as "dark" | "light") || "dark";
+  });
+  
+  // Get or create userId from cookies
+  const [userId, setUserId] = useState<string>(() => {
+    // Try to get userId from cookies
+    const cookies = document.cookie.split(';').map(c => c.trim());
+    const userIdCookie = cookies.find(c => c.startsWith('historylab_user_id='));
+    
+    if (userIdCookie) {
+      return userIdCookie.split('=')[1];
+    }
+    
+    // If no userId found, generate a new one
+    const newUserId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
+    // Set the cookie (expires in 1 year)
+    const expiryDate = new Date();
+    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+    document.cookie = `historylab_user_id=${newUserId};expires=${expiryDate.toUTCString()};path=/;SameSite=Strict`;
+    
+    return newUserId;
   });
   
   // State for tracking whether the URL has been copied (for share button feedback)
@@ -56,25 +113,36 @@ export default function Chat() {
   // State to track if textarea has reached max height
   const [isAtMaxHeight, setIsAtMaxHeight] = useState(false);
   
-  // State for conversation ID (now from URL query parameter instead of path)
+  // State for conversation ID (from URL query parameter or newly generated)
   const [conversationId, setConversationId] = useState(() => {
     // Check if there's an ID in the URL query parameter
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('id');
     
-    // Validate if it looks like our ID format
-    if (idFromUrl && idFromUrl.startsWith('historylab-')) {
-      return idFromUrl;
+    // If we have an ID and it's a hash we created, use it
+    if (idFromUrl && idFromUrl.length > 20) {
+      try {
+        // Try to decode it to ensure it's valid
+        const decoded = decodeHashedComponents(idFromUrl);
+        return idFromUrl;
+      } catch (e) {
+        console.error('Invalid conversation ID format:', e);
+        // Fall through to create a new ID
+      }
     }
     
-    // Create a new conversation ID if none exists in URL
-    const newId = `historylab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // Create a new conversation-specific ID
+    const newConvoId = `convo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
+    // Hash the components
+    const hashedId = hashComponents(userId, COLLECTION_ID, newConvoId);
     
     // Update the URL with the new ID as a query parameter
     const newUrl = new URL(window.location.href);
-    newUrl.searchParams.set('id', newId);
+    newUrl.searchParams.set('id', hashedId);
     window.history.pushState({}, '', newUrl.toString());
-    return newId;
+    
+    return hashedId;
   });
   
   // State for toggling debug information display
@@ -116,8 +184,24 @@ export default function Chat() {
   };
 
   // Function to create a new conversation ID
-  const generateNewConversationId = () => {
-    return `historylab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const createNewConversation = () => {
+    // Create a new conversation-specific ID
+    const newConvoId = `convo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
+    // Hash the components 
+    const hashedId = hashComponents(userId, COLLECTION_ID, newConvoId);
+    
+    // Update state and URL
+    setConversationId(hashedId);
+    
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.set('id', hashedId);
+    window.history.pushState({}, '', newUrl.toString());
+    
+    // Clear history
+    clearHistory();
+    
+    return hashedId;
   };
 
   // Function to share current conversation URL
@@ -127,17 +211,13 @@ export default function Chat() {
     setTimeout(() => setUrlCopied(false), 2000); // Reset copied state after 2 seconds
   };
 
-  // Collection ID for HistoryLab (commented out, now defined on server-side)
-  // const COLLECTION_ID = "80650a98-fe49-429a-afbd-9dde66e2d02b"; // history-lab-1
-  // console.log("COLLECTION_ID", COLLECTION_ID);
-
   // Initialize the agent connection
   // This connects to the backend Chat class in server.ts
   // The 'chat' parameter maps to the Chat class defined in server.ts
   // The 'name' parameter is used to identify this specific agent instance
   const agent = useAgent({
     agent: "chat",
-    name: conversationId
+    name: conversationId // Now contains all components hashed
   });
 
   // Hook to manage the chat state and interactions
@@ -197,9 +277,20 @@ export default function Chat() {
       const urlParams = new URLSearchParams(window.location.search);
       const idFromUrl = urlParams.get('id');
       
-      if (idFromUrl && idFromUrl.startsWith('historylab-')) {
-        setConversationId(idFromUrl);
-        clearHistory(); // Clear and reload chat for the new ID
+      if (idFromUrl && idFromUrl.length > 20) {
+        try {
+          // Try to decode it to ensure it's valid
+          const decoded = decodeHashedComponents(idFromUrl);
+          setConversationId(idFromUrl);
+          clearHistory(); // Clear and reload chat for the new ID
+        } catch (e) {
+          console.error('Invalid conversation ID from URL:', e);
+          // Create a new conversation if the ID is invalid
+          createNewConversation();
+        }
+      } else {
+        // Create a new conversation if no ID is found
+        createNewConversation();
       }
     };
 
@@ -387,22 +478,11 @@ export default function Chat() {
               <div className="flex items-center space-x-2">
                 {/* <FileText className="h-5 w-5 text-[#5cff5c] mr-1" /> */}
                 <span className="font-mono text-xl text-[#E0E0E0] tracking-wider">
-                  HISTORY LAB DOCUMENT INTERFACE
+                  HISTORY LAB
                 </span>
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="digital-display hidden md:flex">
-                  <Clock className="h-3.5 w-3.5 mr-1.5 text-[#E0E0E0]" />
-                  <time dateTime={new Date().toISOString()} className="text-xs font-mono tracking-wide text-[#E0E0E0]">
-                    {new Date().toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                    })}
-                  </time>
-                </div>
-
                 <div className="flex items-center gap-2">
                   {/* Chat status indicator */}
                   {status === "streaming" && (

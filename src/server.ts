@@ -44,9 +44,55 @@ export type Env = {
       }
     ): Promise<any>;
   }; 
+  CONVERSATION_LOGS: KVNamespace;
 };
 
+// Type definition for conversation logs
+interface ConversationLog {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  collectionId: string;
+  convoId: string;
+  messageCount: number;
+  toolCalls: {
+    total: number;
+    byType: Record<string, number>;
+  };
+  queries: {
+    total: number;
+    withToolCalls: number;
+    withoutToolCalls: number;
+  };
+  characters: {
+    input: number;
+    output: number;
+  };
+}
+
 const COLLECTION_ID = '80650a98-fe49-429a-afbd-9dde66e2d02b'; // history-lab-1
+
+// Function to decode the hashed components - Must match the frontend implementation
+function decodeHashedComponents(hash: string): { userId: string, collectionId: string, convoId: string } {
+  try {
+    // Decode the base64 string - use Buffer for Node.js environment
+    const decoded = Buffer.from(hash, 'base64').toString('utf-8');
+    
+    // Split by the delimiter
+    const [userId, collectionId, convoId] = decoded.split('|');
+    
+    return { userId, collectionId, convoId };
+  } catch (e) {
+    logInfo("decodeHashedComponents", "Failed to decode hash", { hash, error: e });
+    // Return fallback values if decoding fails
+    return { 
+      userId: 'unknown', 
+      collectionId: COLLECTION_ID, 
+      convoId: `fallback-${Date.now()}`
+    };
+  }
+}
 
 // we use ALS to expose the agent context to the tools
 export const agentContext = new AsyncLocalStorage<Chat>();
@@ -55,12 +101,90 @@ export const agentContext = new AsyncLocalStorage<Chat>();
  */
 export class Chat extends AIChatAgent<Env> {
 
+  // Track conversation state
+  private conversationLog: ConversationLog | null = null;
+
   public getBucket() {
     return this.env.BUCKET;
   }
 
   public getVectorizeSearch() {
     return this.env.VECTORIZE_SEARCH;
+  }
+
+  /**
+   * Initialize or retrieve the conversation log
+   */
+  private async initConversationLog(userId: string, collectionId: string, convoId: string): Promise<ConversationLog> {
+    // Generate a unique ID for this conversation if we don't have one
+    const conversationId = `${userId}-${collectionId}-${convoId}`;
+    
+    // Check if we already have a log for this conversation
+    try {
+      const existingLog = await this.env.CONVERSATION_LOGS.get(conversationId, 'json');
+      if (existingLog) {
+        logInfo("Chat.initConversationLog", "Retrieved existing conversation log", { conversationId });
+        return existingLog as ConversationLog;
+      }
+    } catch (error) {
+      logInfo("Chat.initConversationLog", "Error retrieving conversation log", { error, conversationId });
+    }
+    
+    // Create a new conversation log
+    const now = new Date().toISOString();
+    const newLog: ConversationLog = {
+      id: conversationId,
+      createdAt: now,
+      updatedAt: now,
+      userId,
+      collectionId,
+      convoId,
+      messageCount: 0,
+      toolCalls: {
+        total: 0,
+        byType: {}
+      },
+      queries: {
+        total: 0,
+        withToolCalls: 0,
+        withoutToolCalls: 0
+      },
+      characters: {
+        input: 0,
+        output: 0
+      }
+    };
+    
+    // Store the new log
+    await this.env.CONVERSATION_LOGS.put(conversationId, JSON.stringify(newLog));
+    logInfo("Chat.initConversationLog", "Created new conversation log", { conversationId });
+    
+    return newLog;
+  }
+  
+  /**
+   * Update the conversation log with new stats
+   */
+  private async updateConversationLog(stats: Partial<ConversationLog>): Promise<void> {
+    if (!this.conversationLog) {
+      logInfo("Chat.updateConversationLog", "No conversation log to update");
+      return;
+    }
+    
+    // Update the conversation log
+    this.conversationLog = {
+      ...this.conversationLog,
+      ...stats,
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Store the updated log
+    await this.env.CONVERSATION_LOGS.put(this.conversationLog.id, JSON.stringify(this.conversationLog));
+    logInfo("Chat.updateConversationLog", "Updated conversation log", { 
+      id: this.conversationLog.id,
+      messageCount: this.conversationLog.messageCount,
+      toolCalls: this.conversationLog.toolCalls
+    });
   }
 
   /**
@@ -72,16 +196,43 @@ export class Chat extends AIChatAgent<Env> {
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
     logInfo("Chat.onChatMessage", "Starting chat message processing");
 
-    // const [userId, collectionId, convoId] = (this.name || "").split("-");
-    const userId = "1";
-    const collectionId = COLLECTION_ID;
-    const convoId = "3";   
+    // Get the hashed ID from the agent name and decode it
+    let userId = "unknown";
+    let collectionId = COLLECTION_ID;
+    let convoId = "unknown";
+    
+    if (this.name) {
+      try {
+        const decodedComponents = decodeHashedComponents(this.name);
+        userId = decodedComponents.userId;
+        collectionId = decodedComponents.collectionId;
+        convoId = decodedComponents.convoId;
+        
+        logInfo("Chat.onChatMessage", "Successfully decoded conversation components", { 
+          userId, 
+          collectionId, 
+          convoId 
+        });
+      } catch (error) {
+        logInfo("Chat.onChatMessage", "Failed to decode conversation components, using defaults", { 
+          error, 
+          agentName: this.name 
+        });
+      }
+    } else {
+      logInfo("Chat.onChatMessage", "No agent name provided, using default values");
+    }
   
     logInfo("Chat.onChatMessage", "Connection info", { 
       userId, 
       collectionId, 
       convoId 
     });  
+
+    // Initialize conversation log if we don't have one
+    if (!this.conversationLog) {
+      this.conversationLog = await this.initConversationLog(userId, collectionId, convoId);
+    }
 
     // Create a streaming response that handles both text and tool outputs
     return agentContext.run(this, async () => {
@@ -224,30 +375,74 @@ export class Chat extends AIChatAgent<Env> {
                 convoId
               });
               
-              // Example: Log statistics about the conversation
-              const toolCalls = event.steps.reduce((count, step) => {
+              // Count tool calls and track stats
+              const toolCallsByType: Record<string, number> = {};
+              const totalToolCalls = event.steps.reduce((count, step) => {
                 // Count tool calls across all steps
-                return count + (step.toolCalls?.length || 0);
+                if (step.toolCalls && step.toolCalls.length > 0) {
+                  step.toolCalls.forEach(toolCall => {
+                    const toolName = toolCall.toolName;
+                    toolCallsByType[toolName] = (toolCallsByType[toolName] || 0) + 1;
+                  });
+                  return count + step.toolCalls.length;
+                }
+                return count;
               }, 0);
               
+              // Find the last user message to calculate input characters
+              const lastUserMessage = this.messages.findLast(m => m.role === 'user');
+              const userInputChars = lastUserMessage ? 
+                (typeof lastUserMessage.content === 'string' ? 
+                  lastUserMessage.content.length : 
+                  JSON.stringify(lastUserMessage.content).length) 
+                : 0;
+              
+              // Find the last assistant message to calculate output characters
+              const lastAssistantMessage = this.messages.findLast(m => m.role === 'assistant');
+              const assistantOutputChars = lastAssistantMessage ? 
+                (typeof lastAssistantMessage.content === 'string' ? 
+                  lastAssistantMessage.content.length : 
+                  JSON.stringify(lastAssistantMessage.content).length) 
+                : 0;
+              
+              // Check if this query used tool calls
+              const queryHadToolCalls = totalToolCalls > 0;
+              
+              // Update the conversation log with the new stats
+              if (this.conversationLog) {
+                await this.updateConversationLog({
+                  messageCount: this.messages.length,
+                  toolCalls: {
+                    total: this.conversationLog.toolCalls.total + totalToolCalls,
+                    byType: Object.entries(toolCallsByType).reduce((merged, [key, value]) => {
+                      merged[key] = (this.conversationLog?.toolCalls.byType[key] || 0) + value;
+                      return merged;
+                    }, { ...this.conversationLog.toolCalls.byType })
+                  },
+                  queries: {
+                    total: this.conversationLog.queries.total + 1,
+                    withToolCalls: this.conversationLog.queries.withToolCalls + (queryHadToolCalls ? 1 : 0),
+                    withoutToolCalls: this.conversationLog.queries.withoutToolCalls + (queryHadToolCalls ? 0 : 1)
+                  },
+                  characters: {
+                    input: this.conversationLog.characters.input + userInputChars,
+                    output: this.conversationLog.characters.output + assistantOutputChars
+                  }
+                });
+              }
+              
               logInfo("Chat.onChatMessage.onFinish", "Conversation stats", {
-                toolCallCount: toolCalls,
-                totalSteps: event.steps.length
+                toolCallCount: totalToolCalls,
+                totalSteps: event.steps.length,
+                toolCallsByType,
+                messageCount: this.messages.length,
+                inputChars: userInputChars,
+                outputChars: assistantOutputChars
               });
 
               logDebug("Chat.onChatMessage.onFinish", "Completed messages", {
                 messages: this.messages
-              });     
-
-              // Example: You could store analytics data, update user session info, etc.
-              // await this.storeAnalytics(userId, {
-              //   toolCalls,
-              //   completedAt: new Date(),
-              //   messageCount: this.messages.length
-              // });
-              
-              // Example: You could trigger other background tasks or notifications
-              // ctx.waitUntil(this.sendNotification(userId, "Your chat response is ready"));
+              });
             },
             maxSteps: 10,
           });
@@ -288,6 +483,7 @@ export default {
       );
       return new Response("OPENAI_API_KEY is not set", { status: 500 });
     }
+    
     logDebug("fetch", "Routing agent request");
     return (
       // Route the request to our agent or return 404 if not found
