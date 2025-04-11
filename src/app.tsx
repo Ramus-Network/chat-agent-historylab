@@ -29,6 +29,7 @@ import {
   ExternalLink,
   Copy,
   Check,
+  Square,
 } from "lucide-react";
 
 // Collection ID constant (matches the server-side constant)
@@ -112,6 +113,9 @@ export default function Chat() {
   
   // State to track if textarea has reached max height
   const [isAtMaxHeight, setIsAtMaxHeight] = useState(false);
+  
+  // State to track local submission state (separate from API status)
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // State for conversation ID (from URL query parameter or newly generated)
   const [conversationId, setConversationId] = useState(() => {
@@ -234,6 +238,25 @@ export default function Chat() {
     agent,                         // The agent connection initialized above
     maxSteps: 5,                   // Maximum number of steps for AI processing
   });
+
+  // Reset isSubmitting when status changes
+  useEffect(() => {
+    if (status === "ready" || status === "error") {
+      setIsSubmitting(false);
+    }
+  }, [status]);
+
+  // Wrapper for handleAgentSubmit to set local submission state
+  const handleSubmit = (e: React.FormEvent) => {
+    setIsSubmitting(true);
+    handleAgentSubmit(e, {
+      data: {
+        annotations: {
+          hello: "world",
+        },
+      },
+    });
+  };
 
   // Auto-resize the textarea whenever input changes
   useEffect(() => {
@@ -563,112 +586,166 @@ Access collections including:
                     </div>
                   </div>
                 ) : (
-                  agentMessages.map((m: Message, index) => {
-                    const isUser = m.role === "user";
-                    const showAvatar =
-                      index === 0 || agentMessages[index - 1]?.role !== m.role;
-                    const showRole = showAvatar && !isUser;
-                    const isLastMessage = index === agentMessages.length - 1;
-                    const shouldShowCopyButton = !isUser && (!isLastMessage || status === "ready");
+                  <>
+                    {agentMessages.map((m: Message, index) => {
+                      const isUser = m.role === "user";
+                      const showAvatar =
+                        index === 0 || agentMessages[index - 1]?.role !== m.role;
+                      const showRole = showAvatar && !isUser;
+                      const isLastMessage = index === agentMessages.length - 1;
+                      const shouldShowCopyButton = !isUser && (!isLastMessage || status === "ready");
 
-                    return (
-                      <div
-                        className={`mb-4 flex flex-col ${
-                          isUser ? "items-end" : "items-start"
-                        }`}
-                        key={m.id}
-                      >
+                      return (
                         <div
-                          className={`flex w-full max-w-4xl ${
-                            isUser ? "justify-end" : "justify-start"
+                          className={`mb-4 flex flex-col ${
+                            isUser ? "items-end" : "items-start"
                           }`}
+                          key={m.id}
                         >
                           <div
-                            className={`rounded-sm flex flex-col ${
-                              isUser
-                                ? "bg-secondary/30 backdrop-blur-sm document-border mr-2"
-                                : "bg-black/40 backdrop-blur-sm document-border ml-2"
-                            } w-fit max-w-[86%]`}
+                            className={`flex w-full max-w-4xl ${
+                              isUser ? "justify-end" : "justify-start"
+                            }`}
                           >
                             <div
-                              className={`terminal-header justify-between ${
-                                isUser ? "bg-secondary/50" : "bg-black"
+                              className={`rounded-sm flex flex-col ${
+                                isUser
+                                  ? "bg-secondary/30 backdrop-blur-sm document-border mr-2"
+                                  : "bg-black/40 backdrop-blur-sm document-border ml-2"
+                              } w-fit max-w-[86%]`}
+                            >
+                              <div
+                                className={`terminal-header justify-between ${
+                                  isUser ? "bg-secondary/50" : "bg-black"
+                                }`}
+                              >
+                                <div className="flex items-center">
+                                  {isUser ? (
+                                    <CommandIcon className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
+                                  ) : (
+                                    <FileText className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
+                                  )}
+                                  <span className="font-mono text-xs tracking-widest text-[#E0E0E0]">
+                                    {isUser ? "RESEARCHER" : "ASSISTANT"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <time
+                                    dateTime={m.createdAt?.toString() ?? new Date().toString()}
+                                    className="text-[10px] text-[#E0E0E0] font-mono"
+                                  >
+                                    {formatTime(new Date(m.createdAt ?? new Date()))}
+                                  </time>
+                                  {!isUser && (
+                                    <div className="font-mono bg-black/50 text-[10px] px-1 text-[#E0E0E0] border border-[#5cff5c]/20">
+                                      HISTORYLAB
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="px-4 py-3 text-sm text-[#5cff5c] font-mono">
+                                {!m.parts || m.parts.length === 0 ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[#5cff5c]/70 text-xs">Processing query...</span>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {m.parts.map((part, i) => {                                    
+                                      // Render text parts as message bubbles
+                                      if (part.type === "text") {
+                                        return (
+                                          <div key={i} className="relative">
+                                            {renderMessageContent(part.text, m.id)}
+                                          </div>
+                                        );
+                                      }
+                                      
+                                      // Render tool invocation parts
+                                      if (part.type === "tool-invocation") {
+                                        return renderToolInvocation(part.toolInvocation, m.id, i);
+                                      }                                    
+                                      
+                                      return null;
+                                    })}
+                                    
+                                    {/* Show copy button based on message position and status */}
+                                    {shouldShowCopyButton && renderCopyButton(m)}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div
+                              className={`h-8 w-8 overflow-hidden document-border flex-none ${
+                                isUser ? "order-last ml-2" : "order-first mr-2"
                               }`}
                             >
+                              {isUser ? (
+                                <div className="h-full w-full bg-secondary/30 flex items-center justify-center">
+                                  <CommandIcon className="h-4 w-4 text-[#E0E0E0]" />
+                                </div>
+                              ) : (
+                                <div className="h-full w-full bg-black/40 flex items-center justify-center">
+                                  <FileText className="h-4 w-4 text-[#E0E0E0]" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    {/* Error message that appears when status is "error" */}
+                    {status === "error" && (
+                      <div className="mb-4 flex flex-col items-start">
+                        <div className="flex w-full max-w-4xl justify-start">
+                          <div className="h-8 w-8 overflow-hidden document-border flex-none order-first mr-2">
+                            <div className="h-full w-full bg-red-900/80 flex items-center justify-center">
+                              <FileText className="h-4 w-4 text-[#E0E0E0]" />
+                            </div>
+                          </div>
+                          <div className="rounded-sm flex flex-col bg-red-900/40 backdrop-blur-sm border border-red-500/50 ml-2 w-fit max-w-[86%]">
+                            <div className="terminal-header justify-between bg-red-950">
                               <div className="flex items-center">
-                                {isUser ? (
-                                  <CommandIcon className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
-                                ) : (
-                                  <FileText className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
-                                )}
+                                <FileText className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
                                 <span className="font-mono text-xs tracking-widest text-[#E0E0E0]">
-                                  {isUser ? "RESEARCHER" : "ASSISTANT"}
+                                  ERROR
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <time
-                                  dateTime={m.createdAt?.toString() ?? new Date().toString()}
+                                  dateTime={new Date().toString()}
                                   className="text-[10px] text-[#E0E0E0] font-mono"
                                 >
-                                  {formatTime(new Date(m.createdAt ?? new Date()))}
+                                  {formatTime(new Date())}
                                 </time>
-                                {!isUser && (
-                                  <div className="font-mono bg-black/50 text-[10px] px-1 text-[#E0E0E0] border border-[#5cff5c]/20">
-                                    HISTORYLAB
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="px-4 py-3 text-sm text-[#5cff5c] font-mono">
-                              {!m.parts || m.parts.length === 0 ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[#5cff5c]/70 text-xs">Processing query...</span>
+                                <div className="font-mono bg-red-950/80 text-[10px] px-1 text-[#E0E0E0] border border-red-500/50">
+                                  SYSTEM
                                 </div>
-                              ) : (
-                                <>
-                                  {m.parts.map((part, i) => {                                    
-                                    // Render text parts as message bubbles
-                                    if (part.type === "text") {
-                                      return (
-                                        <div key={i} className="relative">
-                                          {renderMessageContent(part.text, m.id)}
-                                        </div>
-                                      );
-                                    }
-                                    
-                                    // Render tool invocation parts
-                                    if (part.type === "tool-invocation") {
-                                      return renderToolInvocation(part.toolInvocation, m.id, i);
-                                    }                                    
-                                    
-                                    return null;
-                                  })}
-                                  
-                                  {/* Show copy button based on message position and status */}
-                                  {shouldShowCopyButton && renderCopyButton(m)}
-                                </>
-                              )}
+                              </div>
                             </div>
-                          </div>
-                          <div
-                            className={`h-8 w-8 overflow-hidden document-border flex-none ${
-                              isUser ? "order-last ml-2" : "order-first mr-2"
-                            }`}
-                          >
-                            {isUser ? (
-                              <div className="h-full w-full bg-secondary/30 flex items-center justify-center">
-                                <CommandIcon className="h-4 w-4 text-[#E0E0E0]" />
+                            <div className="px-4 py-3 text-sm text-red-300 font-mono">
+                              <div className="whitespace-pre-wrap break-words">
+                                <p className="text-red-300 mb-2">
+                                  There was an error processing your request. This conversation may have encountered a technical issue.
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <a
+                                    href={window.location.pathname}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex h-9 items-center justify-center border border-red-500/50 bg-red-950/70 text-sm font-medium ring-offset-background transition-colors hover:bg-red-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-3 text-[#E0E0E0] text-xs"
+                                  >
+                                    <ExternalLink className="h-4 w-4 icon-visible mr-1" />
+                                    <span>START NEW CONVERSATION</span>
+                                  </a>                                  
+                                </div>
                               </div>
-                            ) : (
-                              <div className="h-full w-full bg-black/40 flex items-center justify-center">
-                                <FileText className="h-4 w-4 text-[#E0E0E0]" />
-                              </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    );
-                  })
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -676,15 +753,12 @@ Access collections including:
             {/* Input interface */}
             <div className="bg-black/60 backdrop-blur-md sticky bottom-0 border-t border-white/10 py-2">
               <form
-                onSubmit={(e) =>
-                  handleAgentSubmit(e, {
-                    data: {
-                      annotations: {
-                        hello: "world",
-                      },
-                    },
-                  })
-                }
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!isSubmitting && status !== "streaming" && status !== "error") {
+                    handleSubmit(e);
+                  }
+                }}
                 className="mx-4"
               >
                 <div className="relative flex-1">
@@ -700,7 +774,9 @@ Access collections including:
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        handleAgentSubmit(e as unknown as React.FormEvent);
+                        if (!isSubmitting && status !== "streaming" && status !== "error") {
+                          handleSubmit(e as unknown as React.FormEvent);
+                        }
                       }
                     }}
                     rows={1}
@@ -724,11 +800,14 @@ Access collections including:
                   </div>
                   <button
                     type="submit"
-                    className="document-border bg-black/70 text-[#E0E0E0] hover:bg-[#E0E0E0]/30 hover:text-white hover:border-white/50 hover:scale-105 rounded-full p-2 absolute bottom-3 right-3 flex items-center justify-center transition-all duration-200 shadow-sm"
-                    disabled={status === "streaming"}
+                    className={`document-border bg-black/70 text-[#E0E0E0] hover:bg-[#E0E0E0]/30 hover:text-white hover:border-white/50 hover:scale-105 rounded-full p-2 absolute bottom-3 right-3 flex items-center justify-center transition-all duration-200 shadow-sm ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-50 cursor-not-allowed" : ""}`}
+                    disabled={isSubmitting || status === "streaming" || status === "error"}
                   >
-                    <Send className="h-6 w-6" />
-                    <span className="sr-only">Send</span>
+                    <div className="relative w-6 h-6 flex items-center justify-center">
+                      <Send className={`h-6 w-6 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-0 scale-0" : "opacity-100 scale-100"}`} />
+                      <Square className={`h-5 w-5 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-100 scale-100" : "opacity-0 scale-0"}`} />
+                    </div>
+                    <span className="sr-only">{(isSubmitting || status === "streaming" || status === "error") ? "Processing" : "Send"}</span>
                   </button>
                 </div>
               </form>

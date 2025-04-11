@@ -310,10 +310,11 @@ export class Chat extends AIChatAgent<Env> {
               SEARCH STRATEGY:
               1. THINK ALOUD FIRST: Before querying, verbalize your understanding of what the user is asking about, including relevant historical context, key figures, and events. Do this concisely.
               
-              2. IDENTIFY TIME PERIODS: For any historical query, determine the appropriate time period and use date filters when applicable. For example:
+              2. IDENTIFY TIME PERIODS: For any historical query, determine the appropriate time period and use date filters when applicable. Always err on the side of having a wider time period rather than a more condensed one to avoid missing relevant documents. For example:
                  - "Cuban Missile Crisis" → authored_start: "1962-10-01", authored_end: "1962-11-30"
                  - "Nixon's visit to China" → authored_start: "1971-07-01", authored_end: "1972-03-31"
-              
+                 - "Vietnam War" → authored_start: "1955-01-01", authored_end: "1975-12-31" (wider time period to capture the full conflict and related diplomatic communications)
+                 
               3. BREAK DOWN COMPLEX QUERIES: If a user asks about multiple distinct topics, people, or events, break these into separate searches rather than combining them in one query. For example:
                  - "What did Eisenhower and Rumsfeld say about foreign policy?" → Run separate searches for Eisenhower and Rumsfeld
                  - "Compare the Bay of Pigs invasion with the Cuban Missile Crisis" → Search for each event separately                          
@@ -342,12 +343,30 @@ export class Chat extends AIChatAgent<Env> {
                 Bad query: "CIA Soviet nuclear information"
                 Good query: "CIA assessment of Soviet Union nuclear weapons capabilities and development"
                 Appropriate corpus filter: "cia"
+                              
+              - User asks: "Compare US and Soviet positions during arms control negotiations in the 1980s"
+                Breaking down into multiple queries:
+                Query 1: "United States position, strategy, and diplomatic communications regarding arms control negotiations with Soviet Union during Reagan administration"
+                Appropriate corpus filter: "frus"
+                Appropriate date filters: authored_start: "1981-01-20", authored_end: "1989-01-20"
                 
-              - User asks: "How did the Clinton administration address the Balkans conflict?"
-                Bad query: "Clinton Balkans"
-                Good query: "Clinton administration policy, decisions, and diplomatic efforts regarding the Balkans conflict and Yugoslavia"
-                Appropriate corpus filter: "clinton"
-                Appropriate date filters: authored_start: "1993-01-20", authored_end: "2001-01-20"
+                Query 2: "Soviet Union stance, demands, and negotiation tactics on nuclear arms limitation and reduction treaties with United States"
+                Appropriate corpus filter: "cia"
+                Appropriate date filters: authored_start: "1981-01-01", authored_end: "1989-12-31"
+                
+              - User asks: "How did international organizations respond to the Rwandan genocide?"
+                Breaking down into multiple queries:
+                Query 1: "United Nations Security Council discussions, resolutions, and actions regarding Rwanda genocide and humanitarian crisis"
+                Appropriate corpus filter: "un"
+                Appropriate date filters: authored_start: "1994-04-01", authored_end: "1994-12-31"
+                
+                Query 2: "World Bank humanitarian aid, economic assistance, and reconstruction efforts for Rwanda following genocide"
+                Appropriate corpus filter: "worldbank"
+                Appropriate date filters: authored_start: "1994-04-01", authored_end: "1995-12-31"
+                
+                Query 3: "NATO military planning, peacekeeping considerations, and member state positions on intervention in Rwanda"
+                Appropriate corpus filter: "nato"
+                Appropriate date filters: authored_start: "1994-04-01", authored_end: "1994-12-31"
 
               RESPONSE FORMAT:
               - Use markdown formatting for the response.
