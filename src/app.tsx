@@ -30,10 +30,14 @@ import {
   Copy,
   Check,
   Square,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 // Collection ID constant (matches the server-side constant)
 const COLLECTION_ID = '80650a98-fe49-429a-afbd-9dde66e2d02b'; // history-lab-1
+// Response timeout in milliseconds (5 seconds)
+const RESPONSE_TIMEOUT = 5000;
 
 // List of tools that require human confirmation before execution
 // This is used to determine which tool invocations should display confirmation UI
@@ -114,8 +118,14 @@ export default function Chat() {
   // State to track if textarea has reached max height
   const [isAtMaxHeight, setIsAtMaxHeight] = useState(false);
   
-  // State to track local submission state (separate from API status)
+  // State for tracking local submission state (separate from API status)
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // State to track if we're in a limbo state (submitted but no response)
+  const [isLimbo, setIsLimbo] = useState(false);
+  
+  // Ref to store timeout ID
+  const limboTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // State for conversation ID (from URL query parameter or newly generated)
   const [conversationId, setConversationId] = useState(() => {
@@ -239,16 +249,32 @@ export default function Chat() {
     maxSteps: 5,                   // Maximum number of steps for AI processing
   });
 
-  // Reset isSubmitting when status changes
+  // Reset isSubmitting and clear limbo timeout when status changes
   useEffect(() => {
-    if (status === "ready" || status === "error") {
+    if (status === "ready" || status === "error" || status === "streaming") {
       setIsSubmitting(false);
+      setIsLimbo(false);
+      
+      // Clear timeout if it exists
+      if (limboTimeoutRef.current) {
+        clearTimeout(limboTimeoutRef.current);
+        limboTimeoutRef.current = null;
+      }
     }
   }, [status]);
 
-  // Wrapper for handleAgentSubmit to set local submission state
+  // Wrapper for handleAgentSubmit to set local submission state and start timeout
   const handleSubmit = (e: React.FormEvent) => {
     setIsSubmitting(true);
+    
+    // Start timeout to detect limbo state
+    limboTimeoutRef.current = setTimeout(() => {
+      // If we're still submitting after timeout, we're in limbo
+      if (isSubmitting) {
+        setIsLimbo(true);
+      }
+    }, RESPONSE_TIMEOUT);
+    
     handleAgentSubmit(e, {
       data: {
         annotations: {
@@ -256,6 +282,11 @@ export default function Chat() {
         },
       },
     });
+  };
+
+  // Function to reload the page
+  const handleReload = () => {
+    window.location.reload();
   };
 
   // Auto-resize the textarea whenever input changes
@@ -500,9 +531,14 @@ export default function Chat() {
             <div className="w-full flex justify-between items-center">
               <div className="flex items-center space-x-2">
                 {/* <FileText className="h-5 w-5 text-[#5cff5c] mr-1" /> */}
-                <span className="font-mono text-xl text-[#E0E0E0] tracking-wider">
+                <a 
+                  href="https://lab.history.columbia.edu/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="font-mono text-xl text-[#E0E0E0] tracking-wider hover:text-[#5cff5c] transition-colors cursor-pointer"
+                >
                   HISTORY LAB
-                </span>
+                </a>
               </div>
 
               <div className="flex items-center gap-3">
@@ -526,7 +562,7 @@ export default function Chat() {
                   
                   <button
                     onClick={shareConversationUrl}
-                    className="inline-flex h-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-[#E0E0E0] text-xs"
+                    className="inline-flex h-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-[#E0E0E0] text-xs cursor-pointer"
                   >
                     <LinkIcon className="h-4 w-4 icon-visible mr-1" />
                     <span>{urlCopied ? "COPIED!" : "COPY URL"}</span>
@@ -535,14 +571,14 @@ export default function Chat() {
                     href={window.location.pathname}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex h-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-[#E0E0E0] text-xs"
+                    className="inline-flex h-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-[#E0E0E0] text-xs cursor-pointer"
                   >
                     <ExternalLink className="h-4 w-4 icon-visible mr-1" />
                     <span>NEW CONV</span>
                   </a>
                   <button
                     onClick={clearHistory}
-                    className="inline-flex h-9 w-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="inline-flex h-9 w-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
                   >
                     <Trash className="h-4 w-4 icon-visible" />
                     <span className="sr-only">Clear history</span>
@@ -567,21 +603,85 @@ export default function Chat() {
                         {renderMessageContent(`
 # Welcome to HistoryLab AI
 
-An advanced research assistant specialized in analyzing historical documents and helping explore declassified archives.
-
-## Available Document Collections
-
-Access collections including:
-
-* **Central Foreign Policy Files** - US State Department communications
-* **CIA documents** - Declassified intelligence reports and assessments
-* **Foreign Relations of the United States** - Diplomatic correspondence
-* **UN documents** - Resolutions, reports, and official communications
-* **World Bank reports** - Documents on global development and economic policy
-* **Clinton administration documents** - Records from the 1990s US presidency
-
-> Ask questions about historical events, people, or periods to search through these archives.
+An AI assistant for exploring declassified government documents, diplomatic cables, intelligence reports, and historical archives.
 `, 'welcome')}
+                      </div>
+                      <div className="mt-4">
+                        <h5 className="font-mono text-[#E0E0E0] mb-2 text-left text-xs">TRY AN EXAMPLE QUERY:</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <button
+                            onClick={() => {
+                              handleAgentInputChange({ target: { value: "What did the CIA know about the Iranian Revolution before it happened?" } } as React.ChangeEvent<HTMLTextAreaElement>);
+                              setTimeout(() => {
+                                if (!isSubmitting && status !== "streaming" && status !== "error") {
+                                  const form = document.querySelector('form');
+                                  if (form) {
+                                    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                                  }
+                                }
+                              }, 100);
+                            }}
+                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                          >
+                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
+                              <span className="text-base">🇮🇷</span> Iranian Revolution
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAgentInputChange({ target: { value: "How did policymakers view trade with China in the 1990s?" } } as React.ChangeEvent<HTMLTextAreaElement>);
+                              setTimeout(() => {
+                                if (!isSubmitting && status !== "streaming" && status !== "error") {
+                                  const form = document.querySelector('form');
+                                  if (form) {
+                                    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                                  }
+                                }
+                              }, 100);
+                            }}
+                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                          >
+                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
+                              <span className="text-base">🇨🇳</span> Trade with China
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAgentInputChange({ target: { value: "What were internal reactions in the CIA to the civil rights movement in the 1960s" } } as React.ChangeEvent<HTMLTextAreaElement>);
+                              setTimeout(() => {
+                                if (!isSubmitting && status !== "streaming" && status !== "error") {
+                                  const form = document.querySelector('form');
+                                  if (form) {
+                                    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                                  }
+                                }
+                              }, 100);
+                            }}
+                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                          >
+                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
+                              <span className="text-base">✊</span> Civil Rights and the CIA
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAgentInputChange({ target: { value: "What were the internal discussions in the us government related to the Soviet invasion of Afghanistan?" } } as React.ChangeEvent<HTMLTextAreaElement>);
+                              setTimeout(() => {
+                                if (!isSubmitting && status !== "streaming" && status !== "error") {
+                                  const form = document.querySelector('form');
+                                  if (form) {
+                                    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                                  }
+                                }
+                              }, 100);
+                            }}
+                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                          >
+                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
+                              <span className="text-base">🇷🇺</span> Soviet Union invades Afghanistan
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -694,6 +794,56 @@ Access collections including:
                       );
                     })}
                     
+                    {/* Limbo state message */}
+                    {isLimbo && (
+                      <div className="mb-4 flex flex-col items-start">
+                        <div className="flex w-full max-w-4xl justify-start">
+                          <div className="h-8 w-8 overflow-hidden document-border flex-none order-first mr-2">
+                            <div className="h-full w-full bg-yellow-900/80 flex items-center justify-center">
+                              <AlertTriangle className="h-4 w-4 text-[#E0E0E0]" />
+                            </div>
+                          </div>
+                          <div className="rounded-sm flex flex-col bg-yellow-900/40 backdrop-blur-sm border border-yellow-500/50 ml-2 w-fit max-w-[86%]">
+                            <div className="terminal-header justify-between bg-yellow-950">
+                              <div className="flex items-center">
+                                <AlertTriangle className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
+                                <span className="font-mono text-xs tracking-widest text-[#E0E0E0]">
+                                  WARNING
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <time
+                                  dateTime={new Date().toString()}
+                                  className="text-[10px] text-[#E0E0E0] font-mono"
+                                >
+                                  {formatTime(new Date())}
+                                </time>
+                                <div className="font-mono bg-yellow-950/80 text-[10px] px-1 text-[#E0E0E0] border border-yellow-500/50">
+                                  SYSTEM
+                                </div>
+                              </div>
+                            </div>
+                            <div className="px-4 py-3 text-sm text-yellow-300 font-mono">
+                              <div className="whitespace-pre-wrap break-words">
+                                <p className="text-yellow-300 mb-2">
+                                  Something went wrong. Please reload the page.
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    onClick={handleReload}
+                                    className="inline-flex h-9 items-center justify-center border border-yellow-500/50 bg-yellow-950/70 text-sm font-medium transition-colors hover:bg-yellow-800/40 focus-visible:outline-none px-3 text-[#E0E0E0] text-xs"
+                                  >
+                                    <RefreshCw className="h-4 w-4 icon-visible mr-1" />
+                                    <span>RELOAD PAGE</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* Error message that appears when status is "error" */}
                     {status === "error" && (
                       <div className="mb-4 flex flex-col items-start">
@@ -800,7 +950,7 @@ Access collections including:
                   </div>
                   <button
                     type="submit"
-                    className={`document-border bg-black/70 text-[#E0E0E0] hover:bg-[#E0E0E0]/30 hover:text-white hover:border-white/50 hover:scale-105 rounded-full p-2 absolute bottom-3 right-3 flex items-center justify-center transition-all duration-200 shadow-sm ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-50 cursor-not-allowed" : ""}`}
+                    className={`document-border bg-black/70 text-[#E0E0E0] hover:bg-[#E0E0E0]/30 hover:text-white hover:border-white/50 hover:scale-105 rounded-full p-2 absolute bottom-3 right-3 flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-50 cursor-not-allowed" : ""}`}
                     disabled={isSubmitting || status === "streaming" || status === "error"}
                   >
                     <div className="relative w-6 h-6 flex items-center justify-center">
@@ -815,6 +965,13 @@ Access collections including:
           </div>
         </div>
       </div>
+      <footer className="bg-black/80 backdrop-blur-md border-t border-white/10 py-2 text-center">
+        <div className="container mx-auto px-4">
+          <p className="text-[#E0E0E0] text-xs font-mono">
+            Built on the <a href="https://landing.ramus.network" target="_blank" rel="noopener noreferrer" className="text-[#5cff5c] hover:underline cursor-pointer">Ramus Network</a>
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
