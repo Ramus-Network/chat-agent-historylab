@@ -31,18 +31,18 @@ export type Env = {
       queries: string | string[], 
       collection_id: string, 
       topK?: number, 
-      metadata?: { 
-        filter?: {
-          corpus?: string;
-          doc_id?: string;
-          authored?: {
-            $gte?: number;
-            $lte?: number;
-          };
-          [key: string]: any;
-        } 
-      }
-    ): Promise<any>;
+      filters?: Record<string, any>
+    ): Promise<{
+      status: string;
+      matches?: Array<{
+        id: string;
+        text: string;
+        score: number;
+        metadata?: Record<string, any>;
+      }>;
+      message?: string;
+      error?: string;
+    }>;
   }; 
   CONVERSATION_LOGS: KVNamespace;
 };
@@ -286,87 +286,41 @@ export class Chat extends AIChatAgent<Env> {
               - queryCollection: This tool allows you to perform semantic searches through historical document collections with various filtering options. When using this tool, be transparent with the user about which filters you're applying and why. The parameters include:
                 * collectionId: Always use "history-lab-1" unless instructed otherwise
                 * query: The semantic search text (craft this carefully for best results)
-                * corpus: Optional filter for specific document collections (see below)
                 * doc_id: Optional filter for a specific document ID
                 * authored_start/authored_end: Optional date range filters (YYYY-MM-DD format)
 
               - getDocumentText: This tool allows you to get the text of a given document from the R2 bucket using the file key path. The parameters include:
                 * fileKey: The file key path of the document to get the text of
 
-              DOCUMENT COLLECTIONS (CORPORA):
-              You have access to the following historical document collections:
-              - cfpf: Central Foreign Policy Files - US State Department communications with diplomatic missions worldwide (1973-1979), including cables and telegrams
-              - cia: CIA documents - Declassified intelligence reports and assessments
-              - frus: Foreign Relations of the United States - Diplomatic correspondence and State Department records
-              - un: United Nations documents - Resolutions, reports, and official communications
-              - worldbank: World Bank reports - Documents on global development and economic policy
-              - clinton: Clinton administration documents - Records from the 1990s US presidency
-              - nato: NATO documents - Security and defense policy documents
-              - cabinet: US Cabinet meeting records - Internal communications and policy discussions
-              - cpdoc: Brazilian historical archives - Centro de Pesquisa e Documentação materials
-              - kissinger: Documents on Henry Kissinger's diplomatic work
-              - briefing: Government briefing documents and executive summaries
-
-              SEARCH STRATEGY:
-              1. THINK ALOUD FIRST: Before querying, verbalize your understanding of what the user is asking about, including relevant historical context, key figures, and events. Do this concisely.
+              SEARCH STRATEGY - CRITICAL APPROACH:
+              1. BREAK DOWN COMPLEX QUERIES: This is the MOST IMPORTANT strategy. For ANY topic involving multiple distinct concepts, people, events, or questions, you MUST break it into multiple separate searches rather than combining them in one query.
+                 Examples:
+                 - "What did Eisenhower and Kennedy say about Cuba?" → Make separate searches:
+                    1. "Eisenhower administration policy position Cuba relations"
+                    2. "Kennedy administration approach Cuba policy missile crisis"
+                 
+                 - "Tell me about the Strategic Bombing Survey and area bombing of Dresden and Hamburg" → Break into:
+                    1. "United States Strategic Bombing Survey findings methodology conclusions"
+                    2. "Dresden bombing raid casualties damage assessment"
+                    3. "Hamburg bombing operation Gomorrah effects civilian impact"
               
-              2. IDENTIFY TIME PERIODS: For any historical query, determine the appropriate time period and use date filters when applicable. Always err on the side of having a wider time period rather than a more condensed one to avoid missing relevant documents. For example:
+              2. THINK ALOUD FIRST: Before querying, verbalize your understanding of what the user is asking about, including relevant historical context, key figures, and events. Do this concisely.
+              
+              3. IDENTIFY TIME PERIODS: For any historical query, determine the appropriate time period and use date filters when applicable. Always err on the side of having a wider time period rather than a more condensed one to avoid missing relevant documents. For example:
                  - "Cuban Missile Crisis" → authored_start: "1962-10-01", authored_end: "1962-11-30"
                  - "Nixon's visit to China" → authored_start: "1971-07-01", authored_end: "1972-03-31"
                  - "Vietnam War" → authored_start: "1955-01-01", authored_end: "1975-12-31" (wider time period to capture the full conflict and related diplomatic communications)
                  
-              3. BREAK DOWN COMPLEX QUERIES: If a user asks about multiple distinct topics, people, or events, break these into separate searches rather than combining them in one query. For example:
-                 - "What did Eisenhower and Rumsfeld say about foreign policy?" → Run separate searches for Eisenhower and Rumsfeld
-                 - "Compare the Bay of Pigs invasion with the Cuban Missile Crisis" → Search for each event separately                          
+              4. MAKE QUERIES SPECIFIC AND FOCUSED: A good query should be focused on a specific aspect of the topic:
+                 - Bad: "Cold War nuclear weapons"
+                 - Good: "Soviet Union nuclear missile deployment Cuba October 1962"
+                 
+                 - Bad: "Vietnam War bombing campaigns"
+                 - Good: "Operation Rolling Thunder Vietnam bombing effectiveness military targets civilian casualties"
               
-              4. START BROAD: Begin with general searches without unnecessary filters, then narrow down if needed.
-              
-              5. USE CORPUS FILTERS STRATEGICALLY: Apply corpus filters only when the query clearly relates to a specific domain:
-                 - For intelligence or CIA questions → use "cia" corpus
-                 - For US foreign policy or State Department questions → use "frus" corpus
-                 - For 1990s US policy or Clinton administration → use "clinton" corpus
-                 - For UN-related queries → use "un" corpus
-                 - For World Bank or development questions → use "worldbank" corpus
-                 - For NATO security matters → use "nato" corpus
-                 - For US Cabinet decisions → use "cabinet" corpus
-                 - For Kissinger-related topics → use "kissinger" corpus
+              5. START BROAD, THEN NARROW: Begin with general searches, then narrow down based on initial results.
               
               6. ADAPT BASED ON RESULTS: If initial searches don't yield useful results, try reformulating the query or adjusting filters. Explain your reasoning to the user.
-
-              QUERY FORMULATION EXAMPLES:
-              - User asks: "Tell me about the Cuban Missile Crisis"
-                Bad query: "Cuban Missile Crisis information"
-                Good query: "Details, negotiations, and diplomatic communications regarding the Cuban Missile Crisis"
-                Appropriate date filters: authored_start: "1962-10-01", authored_end: "1962-12-31"
-                
-              - User asks: "What did the CIA know about Soviet nuclear capabilities?"
-                Bad query: "CIA Soviet nuclear information"
-                Good query: "CIA assessment of Soviet Union nuclear weapons capabilities and development"
-                Appropriate corpus filter: "cia"
-                              
-              - User asks: "Compare US and Soviet positions during arms control negotiations in the 1980s"
-                Breaking down into multiple queries:
-                Query 1: "United States position, strategy, and diplomatic communications regarding arms control negotiations with Soviet Union during Reagan administration"
-                Appropriate corpus filter: "frus"
-                Appropriate date filters: authored_start: "1981-01-20", authored_end: "1989-01-20"
-                
-                Query 2: "Soviet Union stance, demands, and negotiation tactics on nuclear arms limitation and reduction treaties with United States"
-                Appropriate corpus filter: "cia"
-                Appropriate date filters: authored_start: "1981-01-01", authored_end: "1989-12-31"
-                
-              - User asks: "How did international organizations respond to the Rwandan genocide?"
-                Breaking down into multiple queries:
-                Query 1: "United Nations Security Council discussions, resolutions, and actions regarding Rwanda genocide and humanitarian crisis"
-                Appropriate corpus filter: "un"
-                Appropriate date filters: authored_start: "1994-04-01", authored_end: "1994-12-31"
-                
-                Query 2: "World Bank humanitarian aid, economic assistance, and reconstruction efforts for Rwanda following genocide"
-                Appropriate corpus filter: "worldbank"
-                Appropriate date filters: authored_start: "1994-04-01", authored_end: "1995-12-31"
-                
-                Query 3: "NATO military planning, peacekeeping considerations, and member state positions on intervention in Rwanda"
-                Appropriate corpus filter: "nato"
-                Appropriate date filters: authored_start: "1994-04-01", authored_end: "1994-12-31"
 
               RESPONSE FORMAT:
               - Use markdown formatting for the response.

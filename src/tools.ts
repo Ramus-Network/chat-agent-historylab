@@ -62,51 +62,40 @@ const getDocumentText = tool({
  * Query a given collection using a vector search
  * 
  * This tool allows for semantic searching through historical document collections with various filtering options:
- * - Use collectionId to specify which collection to search (typically "history-lab-1")
- * - Use query for the semantic search text
- * - Filter by corpus to target specific document collections based on the query context
+ * - Use query for the semantic search text (craft this carefully for best results)
  * - Filter by doc_id when looking for information within a specific document
  * - Filter by authored date range to find documents from specific time periods
  * 
- * The agent should use corpus filtering when the query relates to a specific domain:
- * - For questions about intelligence or CIA operations, filter by "cia" corpus
- * - For US foreign policy or State Department questions, use "frus" corpus
- * - For questions about Bill/Hillary Clinton or 1990s US policy, use "clinton" corpus
- * - For UN-related queries, use the "un" corpus
- * - For questions about World Bank or international development, use "worldbank" corpus
- * - For NATO-related questions, use "nato" corpus
- * - For Cabinet-level decisions, use "cabinet" corpus
- * - For Henry Kissinger-related questions, use "kissinger" corpus
+ * IMPORTANT QUERYING STRATEGY:
+ * For best results, break down complex queries into multiple separate searches.
+ * Instead of combining multiple concepts, people, or events in a single query,
+ * make multiple focused queries and then synthesize the results.
  * 
- * Available corpora:
- * - cfpf: Central Foreign Policy Files (CFPF) - Collection of US State Department communications with diplomatic missions worldwide from 1973-1979, including cables and telegrams forming the backbone of US foreign policy records (1,670,290 documents)
- * - cia: CIA documents, declassified intelligence reports and assessments (~440K docs)
- * - frus: Foreign Relations of the United States - Diplomatic correspondence and State Department records (~159K docs)
- * - un: United Nations documents, resolutions, and reports (~93K docs)
- * - worldbank: World Bank reports on global development and economic policy (~68K docs)
- * - clinton: Documents from the Clinton administration (1990s) (~30K docs)
- * - nato: North Atlantic Treaty Organization documents on security and defense (~23K docs)
- * - cabinet: U.S. Cabinet meeting records and internal communications (~20K docs)
- * - cpdoc: Brazilian historical archives (Centro de Pesquisa e Documentação) (~6K docs)
- * - kissinger: Documents related to Henry Kissinger's diplomatic work (~2K docs)
- * - briefing: Government briefing documents and executive summaries (~924 docs)
+ * Examples of breaking down queries:
+ * - "What did Nixon and Kissinger discuss about China?" → Make separate queries:
+ *   1. "Richard Nixon discussions communications China visit diplomatic relations"
+ *   2. "Henry Kissinger negotiations China diplomatic strategy"
+ * 
+ * - "How did the US respond to the Cuban Missile Crisis?" → Break into:
+ *   1. "United States government executive committee response Cuban Missile Crisis"
+ *   2. "Kennedy administration decisions actions Cuban Missile Crisis blockade"
+ *   3. "Military preparations deployment Cuban Missile Crisis"
+ *   4. "Diplomatic negotiations communications Soviet Union Cuban Missile Crisis resolution"
  */
 const queryCollection = tool({
-  description: "Query historical document collections with semantic search and filtering options. When using this tool, be transparent about which filters you apply and why. For topic-specific queries, use the appropriate corpus filter (e.g., 'cia' for intelligence questions, 'clinton' for 1990s policy). For date-specific searches, use authored_start/authored_end with YYYY-MM-DD format.",
+  description: "Perform semantic searches through historical document collections. For complex topics, make MULTIPLE separate tool calls with focused queries rather than combining topics in one search. Always set appropriate date ranges for historical events.",
   parameters: z.object({ 
-    collectionId: z.string().describe("Collection ID to search within"),
-    query: z.string().describe("The semantic search query text"),
-    corpus: z.string().optional().describe("Filter by specific corpus (e.g., 'cia', 'frus', 'clinton', 'un', 'worldbank', 'nato', 'cabinet', 'cfpf', 'cpdoc', 'kissinger', 'briefing') - use when query relates to a specific collection"),
+    // collectionId: z.string().describe("Collection ID to search within (use 'history-lab-1' unless instructed otherwise)"),
+    query: z.string().describe("The semantic search query text - make focused, specific queries rather than combining multiple topics"),
     doc_id: z.string().optional().describe("Filter by specific document ID when looking for more information within a document"),
     authored_start: z.string().optional().describe("Start date for filtering documents (format: YYYY-MM-DD)"),
     authored_end: z.string().optional().describe("End date for filtering documents (format: YYYY-MM-DD)")
   }),
-  execute: async ({ collectionId, query, corpus, doc_id, authored_start, authored_end }) => {
+  execute: async ({ query, doc_id, authored_start, authored_end }) => {
     // Log the search parameters
     logInfo(
       "queryCollection", 
-      `Querying collection: ${collectionId} with query: ${query}` + 
-      (corpus ? `, corpus: ${corpus}` : "") +
+      `Querying collection: history-lab-1 with query: ${query}` + 
       (doc_id ? `, doc_id: ${doc_id}` : "") +
       (authored_start ? `, authored from: ${authored_start}` : "") +
       (authored_end ? `, to: ${authored_end}` : "")
@@ -116,23 +105,8 @@ const queryCollection = tool({
       const agent = getAgent();
       const vectorizeSearch = agent.getVectorizeSearch();
       
-      // Define type for the filters object
-      interface Filters {
-        corpus?: string;
-        doc_id?: string;
-        authored?: {
-          $gte?: number;
-          $lte?: number;
-        };
-      }
-      
-      // Prepare filters for the search
-      const filters: Filters = {};
-      
-      // Add corpus filter if specified
-      if (corpus) {
-        filters.corpus = corpus;
-      }
+      // Build filters for the search
+      const filters: Record<string, any> = {};
       
       // Add document ID filter if specified
       if (doc_id) {
@@ -142,35 +116,42 @@ const queryCollection = tool({
       // Add date range filters if specified
       if (authored_start || authored_end) {
         filters.authored = {};
+        
         if (authored_start) {
-          // conver to unix timestamp
+          // Convert to unix timestamp
           filters.authored.$gte = new Date(authored_start).getTime();
         }
+        
         if (authored_end) {
           filters.authored.$lte = new Date(authored_end).getTime();
         }
       }
       
-      collectionId = "80650a98-fe49-429a-afbd-9dde66e2d02b" // history-lab-1
-      
-      // Create metadata object for the search if filters are present
-      const metadata = Object.keys(filters).length > 0 ? { filter: filters } : undefined;
+      // Always use the history-lab-1 collection ID
+      const finalCollectionId = "80650a98-fe49-429a-afbd-9dde66e2d02b"; // history-lab-1
       
       // Log the complete search request for debugging
       logDebug("queryCollection", `Search request: {
-        query: "${query}",
-        collectionId: "${collectionId}",
+        queries: "${query}",
+        collection_id: "${finalCollectionId}",
         topK: 10,
-        metadata: ${JSON.stringify(metadata)}
+        filters: ${JSON.stringify(filters)}
       }`);
       
-      // Call the vector search with parameters
-      // The findSimilarEmbeddings function accepts: (query, collectionId, topK?, metadata?)
+      // Create the request object for the new API format
+      const request = {
+        queries: query,
+        collection_id: finalCollectionId,
+        topK: 10,
+        filters: Object.keys(filters).length > 0 ? filters : undefined
+      };
+      
+      // Call the vector search with parameters using the new format
       const results = await vectorizeSearch.findSimilarEmbeddings(
-        query,          // The semantic search query
-        collectionId,   // The collection ID to search within
-        10,             // Top K results to return (default 10)
-        metadata        // Optional metadata filters with corpus, doc_id, and authored date range
+        request.queries,
+        request.collection_id,
+        request.topK,
+        request.filters
       );
       
       // Log the number of results returned
