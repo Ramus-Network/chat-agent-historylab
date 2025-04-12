@@ -400,6 +400,44 @@ export default function Chat() {
     );
   };
 
+  // Render reasoning content with grayed out styling and markdown support
+  const renderReasoningContent = (text: string, messageId: string) => {
+    return (
+      <div className="whitespace-pre-wrap break-words text-[#a0a0a0] opacity-70 markdown-condensed border-l-2 border-[#a0a0a0]/30 pl-2 my-2">
+        <ReactMarkdown 
+          rehypePlugins={[rehypeRaw]} 
+          remarkPlugins={[remarkGfm]}
+          components={{
+            // Style different markdown elements with grayed out colors
+            h1: ({node, ...props}) => <h1 className="text-[#a0a0a0] font-bold" {...props} />,
+            h2: ({node, ...props}) => <h2 className="text-[#a0a0a0] font-bold" {...props} />,
+            h3: ({node, ...props}) => <h3 className="text-[#a0a0a0] font-bold" {...props} />,
+            h4: ({node, ...props}) => <h4 className="text-[#a0a0a0] font-bold" {...props} />,
+            p: ({node, ...props}) => <p className="text-[#a0a0a0]" {...props} />,
+            a: ({node, ...props}) => <a className="text-[#a0a0a0] underline" {...props} />,
+            strong: ({node, ...props}) => <strong className="text-[#a0a0a0] font-bold" {...props} />,
+            em: ({node, ...props}) => <em className="text-[#a0a0a0] italic" {...props} />,
+            ul: ({node, ...props}) => <ul className="text-[#a0a0a0] list-disc" {...props} />,
+            ol: ({node, ...props}) => <ol className="text-[#a0a0a0] list-decimal" {...props} />,
+            li: ({node, ...props}) => <li className="text-[#a0a0a0]" {...props} />,
+            blockquote: ({node, ...props}) => <blockquote className="markdown-blockquote text-[#a0a0a0]" {...props} />,
+            code: ({node, inline, className, ...props}: any) => 
+              inline 
+                ? <code className="markdown-code text-[#a0a0a0]" {...props} />
+                : <code className="markdown-code-block text-[#a0a0a0] block" {...props} />,
+            pre: ({node, ...props}) => <pre className="markdown-code-block text-[#a0a0a0]" {...props} />,
+            table: ({node, ...props}) => <table className="markdown-table text-[#a0a0a0]" {...props} />,
+            th: ({node, ...props}) => <th className="text-[#a0a0a0]" {...props} />,
+            td: ({node, ...props}) => <td className="text-[#a0a0a0]" {...props} />,
+            hr: ({node, ...props}) => <hr className="border-[#a0a0a0]/30 my-2" {...props} />,
+          }}
+        >
+          {text}
+        </ReactMarkdown>
+      </div>
+    );
+  };
+
   // Render tool invocation with appropriate UI
   const renderToolInvocation = (toolInvocation: any, messageId: string, index: number) => {
     // Simple rendering for tool invocations
@@ -756,6 +794,15 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                         return (
                                           <div key={i} className="relative">
                                             {renderMessageContent(part.text, m.id)}
+                                          </div>
+                                        );
+                                      }
+                                      
+                                      // Render reasoning parts with grayed out styling
+                                      if (part.type === "reasoning") {
+                                        return (
+                                          <div key={i} className="relative">
+                                            {renderReasoningContent((part as any).reasoning, m.id)}
                                           </div>
                                         );
                                       }

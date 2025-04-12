@@ -55,6 +55,10 @@
     }
   ]
   // ,
+  // "ai": {
+  //   "binding": "AI"    
+  // }
+  // ,
   // this should be uncommented for deployment
   // "routes": [
   //   {

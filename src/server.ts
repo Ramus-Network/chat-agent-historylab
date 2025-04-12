@@ -11,11 +11,14 @@ import { AIChatAgent } from "agents-sdk/ai-chat-agent";
 import {
   createDataStreamResponse,
   generateId,
+  type LanguageModelV1,
   type Message,
   streamText,
   type StreamTextOnFinishCallback,
 } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+// import { createWorkersAI } from 'workers-ai-provider';
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -24,6 +27,7 @@ import { logDebug, logInfo } from "./shared";
 // Environment variables type definition
 export type Env = {
   OPENAI_API_KEY: string;
+  GOOGLE_GENERATIVE_AI_API_KEY: string;
   BUCKET: R2Bucket;
   Chat: AgentNamespace<Chat>;
   VECTORIZE_SEARCH: {
@@ -72,6 +76,7 @@ interface ConversationLog {
 }
 
 const COLLECTION_ID = '80650a98-fe49-429a-afbd-9dde66e2d02b'; // history-lab-1
+const useGemini = true;
 
 // Function to decode the hashed components - Must match the frontend implementation
 function decodeHashedComponents(hash: string): { userId: string, collectionId: string, convoId: string } {
@@ -249,24 +254,34 @@ export class Chat extends AIChatAgent<Env> {
             executions,
           });
 
-          logInfo("Chat.onChatMessage", "Initializing OpenAI client");
-          // Initialize OpenAI client with API key from environment
-          const openai = createOpenAI({
-            apiKey: this.env.OPENAI_API_KEY,
-          });
+          // Declare model variable that will be set in the conditionals
+          let model;
 
-          // Cloudflare AI Gateway
-          // const openai = createOpenAI({
-          //   apiKey: this.env.OPENAI_API_KEY,
-          //   baseURL: this.env.GATEWAY_BASE_URL,
-          // });
+          if (useGemini) {
+            logInfo("Chat.onChatMessage", "Initializing Gemini client");                              
+            // Initialize Google client with API key from environment
+            const googleAI = createGoogleGenerativeAI({
+              apiKey: this.env.GOOGLE_GENERATIVE_AI_API_KEY
+            });
+            model = googleAI("models/gemini-2.0-flash-exp");
+          } else {
+            logInfo("Chat.onChatMessage", "Initializing OpenAI client");                  
+              
+            // Initialize OpenAI client with API key from environment
+            const openai = createOpenAI({
+              apiKey: this.env.OPENAI_API_KEY,
+            });
 
-          const model_name = "gpt-4o-2024-11-20";
+            const model_name = "gpt-4o-2024-11-20";
+            // const model_name = "gpt-4o-mini-2024-07-18";
 
-          logDebug("Chat.onChatMessage", "Starting AI stream", { model: model_name });
+            logDebug("Chat.onChatMessage", "Starting AI stream", { model: model_name });
+            model = openai(model_name);
+          }
+
           // Stream the AI response using GPT-4o
           const result = streamText({
-            model: openai(model_name),
+            model: model as LanguageModelV1,
             system: `
               You are HistoryLab AI, an advanced research assistant specialized in analyzing historical documents and helping users explore declassified archives.
 
