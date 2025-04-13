@@ -167,6 +167,19 @@ const queryCollection = tool({
   },
 });
 
+/**
+ * Submit Feedback tool
+ * This tool allows the user to submit feedback about their interaction.
+ * The AI should first ask the user if they want to submit feedback.
+ * If the user confirms, the AI should call this tool with a description of the issue.
+ * The tool automatically captures the conversation context.
+ */
+const submitFeedback = tool({
+  description: "Submits feedback. Used automatically for technical issues (e.g., tool failures, unexpected empty results) OR after asking the user for confirmation when they express any feedback/emotion.",
+  parameters: z.object({
+    description: z.string().describe("A detailed description that includes: (1) the specific technical issue or user feedback, (2) relevant context from the conversation (what the user was trying to accomplish), and (3) how this feedback relates to their research or experience."),
+  }),
+});
 
 /**
  * Export all available tools
@@ -177,7 +190,7 @@ export const tools = {
   // listCollectionContents,
   queryCollection,
   getDocumentText,
-  testTool
+  submitFeedback
 };
 
 // /**
@@ -186,8 +199,52 @@ export const tools = {
 //  * Each function here corresponds to a tool above that doesn't have an execute function
 //  */
 export const executions = {
-  getWeatherInformation: async ({ city }: { city: string }) => {
-    logInfo("getWeatherInformation", `Getting weather information for city: ${city}`);
-    return `The weather in ${city} is sunny`;
+  submitFeedback: async ({ description }: { description: string }) => {
+    logInfo("SubmitFeedback", `Received feedback submission request.`);
+
+    try {
+      const agent = getAgent();
+      const feedbackKV = agent.getFeedbackKV();
+      const messages = agent.messages;
+      const agentName = agent.name || 'unknown-agent';
+
+      // Decode user/convo IDs (reuse existing logic if possible, or basic split)
+      // Basic split for now, ideally reuse decodeHashedComponents if accessible
+      let userId = 'unknown';
+      let collectionId = 'unknown';
+      let convoId = 'unknown';
+      try {
+        // Attempt to reuse decoding logic or implement a simple version
+        const decoded = Buffer.from(agentName, 'base64').toString('utf-8').split('|');
+        if (decoded.length === 3) {
+          [userId, collectionId, convoId] = decoded;
+        }
+      } catch (e) {
+        logDebug("SubmitFeedback", "Failed to decode agent name for IDs, using defaults.", { agentName });
+      }
+
+      // Generate a unique report ID
+      const reportId = `feedback-${userId}-${convoId}-${Date.now()}`;
+
+      const feedbackData = {
+        reportId,
+        timestamp: new Date().toISOString(),
+        userId,
+        collectionId,
+        convoId,
+        description,
+        conversation: messages, // Includes full message history
+      };
+
+      // Save to KV
+      await feedbackKV.put(reportId, JSON.stringify(feedbackData));
+
+      logInfo("SubmitFeedback", `Successfully saved feedback report: ${reportId}`);
+      return { success: true, reportId: reportId, message: "Thank you for your feedback. A report has been submitted." };
+
+    } catch (error) {
+      logDebug("SubmitFeedback", `Error submitting feedback: ${error}`);
+      return { success: false, error: "Failed to submit feedback due to an internal error." };
+    }
   },
 };

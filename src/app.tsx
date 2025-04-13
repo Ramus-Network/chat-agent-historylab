@@ -9,6 +9,7 @@ import { useAgentChat } from "agents-sdk/ai-react";
 // Type definition for chat messages
 import type { Message } from "@ai-sdk/react";
 // Constants shared between frontend and backend for approval states
+import { APPROVAL } from "./shared";
 
 // Type import for available tools defined in tools.ts
 import type { tools } from "./tools";
@@ -46,7 +47,7 @@ const RESPONSE_TIMEOUT = 5000;
 // This is used to determine which tool invocations should display confirmation UI
 // These tools must have corresponding executions in the server-side executions object
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
-  "testTool", // This matches the testTool defined in tools.ts
+  "submitFeedback", // This matches the submitFeedback defined in tools.ts
 ];
 
 // Simple hash function to obfuscate the ID components
@@ -439,57 +440,145 @@ export default function Chat() {
 
   // Render tool invocation with appropriate UI
   const renderToolInvocation = (toolInvocation: any, messageId: string, index: number) => {
-    return (
-      <div key={`${messageId}-tool-${index}`} className="bg-blue-50 p-3 my-3 border border-[#6CA0D6]/50 rounded-md text-gray-700">
-        <div className="font-mono text-xs mb-2 font-semibold text-blue-800">
-          Tool: <span className="font-normal text-blue-700">{toolInvocation.toolName}</span>
-        </div>
-        {toolInvocation.args && Object.keys(toolInvocation.args).length > 0 && (
-          <div className="font-mono text-xs mb-1">
-            <div className="font-semibold text-blue-800">Parameters:</div>
-            {Object.entries(toolInvocation.args).map(([key, value]) => (
-              <div key={key} className="pl-2 text-[10px] flex flex-wrap">
-                <span className="text-blue-800/80 mr-1 font-medium">{key}:</span>
-                <span className="font-normal text-blue-700 break-all">{typeof value === 'string' ? value : JSON.stringify(value)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {toolInvocation.state === 'result' && (
-          <div className="font-mono text-xs mb-1 mt-2">
-            <div className="font-semibold text-blue-800">Result:</div>
-            <div className="pl-2 text-[10px]">
-              {toolInvocation.result && typeof toolInvocation.result === 'object' && 'matches' in toolInvocation.result ? (
-                <div className="font-normal text-gray-700">
-                  <div className="mb-1">Found {toolInvocation.result.matches?.length || 0} documents:</div>
-                  {toolInvocation.result.matches?.map((match: any, i: number) => (
-                    <div key={i} className="mb-1 pl-2">
-                      <span className="text-gray-600">{i+1}. </span>
-                      {match.metadata?.file_key ? (
-                        <a
-                          href={`https://r2-text-viewer.nchimicles.workers.dev/${match.metadata.file_key}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-normal text-[#6CA0D6] hover:underline"
-                        >
-                          {match.metadata?.doc_id || 'Unknown Document'}
-                        </a>
-                      ) : (
-                        <span className="font-normal text-gray-700">{match.metadata?.doc_id || 'Unknown Document'}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <span className="font-normal text-gray-700 break-all">
-                  {JSON.stringify(toolInvocation.result).substring(0, 200)}{JSON.stringify(toolInvocation.result).length > 200 ? '...' : ''}
-                </span>
-              )}
+    const toolCallId = toolInvocation.toolCallId;
+    const toolName = toolInvocation.toolName;
+
+    // --- Confirmation UI --- 
+    if (
+      toolsRequiringConfirmation.includes(toolName as keyof typeof tools) &&
+      toolInvocation.state === "call"
+    ) {
+      return (
+        <div 
+          key={`${messageId}-tool-confirm-${index}`} 
+          className="bg-amber-50 p-4 my-3 border border-amber-400/60 rounded-md text-amber-900 shadow-sm"
+        >
+          <div className="flex items-center gap-2 mb-3">
+             <div className="bg-amber-100 p-1.5 rounded-full border border-amber-300">
+              <AlertTriangle size={16} className="text-amber-600" />
             </div>
+            <h4 className="font-semibold text-sm text-amber-800">
+              Action Required: <span className="font-mono">{toolName}</span>
+            </h4>
           </div>
-        )}
-      </div>
-    );
+
+          <div className="mb-4">
+            <h5 className="text-xs font-semibold mb-1 text-amber-700/90">
+              Details:
+            </h5>
+            <pre className="bg-amber-100/70 border border-amber-200 p-2 rounded-md text-xs overflow-auto font-mono text-amber-800/90">
+              {JSON.stringify(toolInvocation.args, null, 2)}
+            </pre>
+          </div>
+
+          <p className="text-xs text-amber-700 mb-3">
+            Do you want to approve this action?
+          </p>
+
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() =>
+                addToolResult({
+                  toolCallId,
+                  result: APPROVAL.NO,
+                })
+              }
+              className="inline-flex h-7 items-center justify-center border border-amber-400 bg-white text-amber-800 text-xs font-medium transition-colors hover:bg-amber-100 hover:border-amber-500 px-3 gap-1 rounded-md cursor-pointer"
+            >
+              Reject
+            </button>
+            <button
+              onClick={() =>
+                addToolResult({
+                  toolCallId,
+                  result: APPROVAL.YES,
+                })
+              }
+              className="inline-flex h-7 items-center justify-center border border-[#6CA0D6] bg-[#6CA0D6] text-white text-xs font-medium transition-colors hover:bg-[#5a90c0] hover:border-[#5a90c0] px-3 gap-1 rounded-md cursor-pointer shadow-sm"
+            >
+              Approve
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Standard Tool Invocation Display (Result) --- 
+    // Only render if the state is 'result' or if it's a tool that *doesn't* require confirmation
+    if (toolInvocation.state === 'result' || !toolsRequiringConfirmation.includes(toolName as keyof typeof tools)) {
+      return (
+        <div 
+          key={`${messageId}-tool-result-${index}`} 
+          className="bg-blue-50 p-3 my-3 border border-[#6CA0D6]/50 rounded-md text-gray-700"
+        >
+          <div className="font-mono text-xs mb-2 font-semibold text-blue-800">
+            Tool: <span className="font-normal text-blue-700">{toolInvocation.toolName}</span>
+          </div>
+          {toolInvocation.args && Object.keys(toolInvocation.args).length > 0 && (
+            <div className="font-mono text-xs mb-1">
+              <div className="font-semibold text-blue-800">Parameters:</div>
+              {Object.entries(toolInvocation.args).map(([key, value]) => (
+                <div key={key} className="pl-2 text-[10px] flex flex-wrap">
+                  <span className="text-blue-800/80 mr-1 font-medium">{key}:</span>
+                  <span className="font-normal text-blue-700 break-all">{typeof value === 'string' ? value : JSON.stringify(value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {toolInvocation.state === 'result' && (
+            <div className="font-mono text-xs mb-1 mt-2">
+              <div className="font-semibold text-blue-800">Result:</div>
+              <div className="pl-2 text-[10px]">
+                {/* Custom display for submitFeedback result */} 
+                {toolInvocation.toolName === 'submitFeedback' && typeof toolInvocation.result === 'object' && toolInvocation.result !== null ? (
+                  toolInvocation.result.success ? (
+                    <div className="flex items-center gap-1.5 text-green-700 text-xs font-medium mt-1">
+                      <Check className="h-3.5 w-3.5 text-green-600" />
+                      <span>{toolInvocation.result.message || "Feedback submitted successfully!"}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-red-700 text-xs font-medium mt-1">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+                      <span>{toolInvocation.result.error || "Failed to submit feedback."}</span>
+                    </div>
+                  )
+                // Standard display for queryCollection results
+                ) : toolInvocation.toolName === 'queryCollection' && toolInvocation.result && typeof toolInvocation.result === 'object' && 'matches' in toolInvocation.result ? (
+                  <div className="font-normal text-gray-700">
+                    <div className="mb-1">Found {toolInvocation.result.matches?.length || 0} documents:</div>
+                    {toolInvocation.result.matches?.map((match: any, i: number) => (
+                      <div key={i} className="mb-1 pl-2">
+                        <span className="text-gray-600">{i+1}. </span>
+                        {match.metadata?.file_key ? (
+                          <a
+                            href={`https://doc-viewer.ramus.network/${match.metadata.file_key}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-normal text-[#6CA0D6] hover:underline"
+                          >
+                            {match.metadata?.doc_id || 'Unknown Document'}
+                          </a>
+                        ) : (
+                          <span className="font-normal text-gray-700">{match.metadata?.doc_id || 'Unknown Document'}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  // Generic display for other tool results
+                  <span className="font-normal text-gray-700 break-all">
+                    {JSON.stringify(toolInvocation.result).substring(0, 200)}{JSON.stringify(toolInvocation.result).length > 200 ? '...' : ''}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // If it's a tool requiring confirmation but state is not 'call' or 'result' (e.g., pending), render nothing for now.
+    return null; 
   };
 
   // State for tracking which message content has been copied

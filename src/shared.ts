@@ -2,8 +2,8 @@
 
 // Approval string to be shared across frontend and backend
 export const APPROVAL = {
-  YES: "Yes, confirmed.",
-  NO: "No, denied.",
+  YES: "approved",
+  NO: "rejected",
 } as const;
 
 // Logging configuration
@@ -25,10 +25,10 @@ export function setLogLevel(level: LogLevelType) {
 // Logging utility functions
 export function logDebug(component: string, message: string, data?: any) {
   if (CURRENT_LOG_LEVEL === LOG_LEVEL.DEBUG) {
-    console.debug(`[DEBUG][${component}] ${message}`, data ? data : '');
+    console.debug(`[DEBUG][${component}] ${message}`, data ? JSON.stringify(data) : '');
   }
 }
 
 export function logInfo(component: string, message: string, data?: any) {
-  console.info(`[INFO][${component}] ${message}`, data ? data : '');
+  console.log(`[INFO][${component}] ${message}`, data ? JSON.stringify(data) : '');
 }

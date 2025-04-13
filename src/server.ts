@@ -49,6 +49,7 @@ export type Env = {
     }>;
   }; 
   CONVERSATION_LOGS: KVNamespace;
+  FEEDBACK_LOGS: KVNamespace;
 };
 
 // Type definition for conversation logs
@@ -73,6 +74,7 @@ interface ConversationLog {
     input: number;
     output: number;
   };
+  messageSamples: string[];
 }
 
 const COLLECTION_ID = '80650a98-fe49-429a-afbd-9dde66e2d02b'; // history-lab-1
@@ -117,6 +119,10 @@ export class Chat extends AIChatAgent<Env> {
     return this.env.VECTORIZE_SEARCH;
   }
 
+  public getFeedbackKV() {
+    return this.env.FEEDBACK_LOGS;
+  }
+
   /**
    * Initialize or retrieve the conversation log
    */
@@ -157,7 +163,8 @@ export class Chat extends AIChatAgent<Env> {
       characters: {
         input: 0,
         output: 0
-      }
+      },
+      messageSamples: []
     };
     
     // Store the new log
@@ -324,6 +331,11 @@ export class Chat extends AIChatAgent<Env> {
               - getDocumentText: This tool allows you to get the text of a given document from the R2 bucket using the file key path. The parameters include:
                 * fileKey: The file key path of the document to get the text of
 
+              - submitFeedback: 
+                * Technical Issues and User Feedback: Always ask the user first before submitting any feedback. For technical issues (like query tool returning no results unexpectedly, tool failures, missing document text, or other functional problems), explain the issue to the user and ask if they'd like to submit a report. Similarly, if the user expresses any feedback or emotion (positive or negative), first acknowledge it (e.g., "Thank you for the feedback," or "I understand your frustration..."), then ask if they'd like to submit this as a report.
+                * Parameters:
+                  * description: A detailed description that includes: (1) the specific technical issue or user feedback, (2) relevant context from the conversation (what the user was trying to accomplish), and (3) how this feedback relates to their research or experience. Be thorough but concise.
+
               SEARCH STRATEGY - CRITICAL APPROACH:
               1. BREAK DOWN COMPLEX QUERIES: This is the MOST IMPORTANT strategy. For ANY topic involving multiple distinct concepts, people, events, or questions, you MUST break it into multiple separate searches rather than combining them in one query.
                  Examples:
@@ -358,7 +370,7 @@ export class Chat extends AIChatAgent<Env> {
               - Use markdown formatting for the response.
               - Clearly distinguish between direct quotes (using quotation marks and citation) and your summaries.
               - When you can't find information, explicitly state this and explain what you did find instead.
-              - Make sure to cite your sources. Provide a link to the document using the following format: [View Document](https://r2-text-viewer.nchimicles.workers.dev/{file_key}) (e.g. https://r2-text-viewer.nchimicles.workers.dev/0000000001/80650a98-fe49-429a-afbd-9dde66e2d02b/000062a6-7ae7-4043-8d97-9c6e4012bb1b/507922_un.txt)                                               
+              - Make sure to cite your sources. Provide a link to the document using the following format: [View Document](https://doc-viewer.ramus.network/{file_key}) (e.g. https://doc-viewer.ramus.network/0000000001/80650a98-fe49-429a-afbd-9dde66e2d02b/153b14a1-1e61-406d-a6fc-082fca798d15/1979STATE298311_unknown.txt)                                               
 
               IMPORTANT INFO:
               - collectionId is always "${COLLECTION_ID}"
@@ -402,6 +414,16 @@ export class Chat extends AIChatAgent<Env> {
                   JSON.stringify(lastUserMessage.content).length) 
                 : 0;
               
+              // Extract and truncate the user message content for logging
+              const messageContent = lastUserMessage ? 
+                (typeof lastUserMessage.content === 'string' ? 
+                  lastUserMessage.content : 
+                  JSON.stringify(lastUserMessage.content)) 
+                : '';
+              const truncatedMessage = messageContent.length > 1000 ? 
+                messageContent.substring(0, 1000) + '...' : 
+                messageContent;
+              
               // Find the last assistant message to calculate output characters
               const lastAssistantMessage = this.messages.findLast(m => m.role === 'assistant');
               const assistantOutputChars = lastAssistantMessage ? 
@@ -432,7 +454,8 @@ export class Chat extends AIChatAgent<Env> {
                   characters: {
                     input: this.conversationLog.characters.input + userInputChars,
                     output: this.conversationLog.characters.output + assistantOutputChars
-                  }
+                  },
+                  messageSamples: [...this.conversationLog.messageSamples, truncatedMessage]
                 });
               }
               
@@ -487,6 +510,20 @@ export default {
         "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
       );
       return new Response("OPENAI_API_KEY is not set", { status: 500 });
+    }
+    if (!env.GOOGLE_GENERATIVE_AI_API_KEY && useGemini) {
+      logInfo("fetch", "GOOGLE_GENERATIVE_AI_API_KEY not set for Gemini");
+      console.error(
+        "GOOGLE_GENERATIVE_AI_API_KEY is not set for Gemini, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
+      );
+      return new Response("GOOGLE_GENERATIVE_AI_API_KEY is not set", { status: 500 });
+    }
+    if (!env.FEEDBACK_LOGS) {
+      logInfo("fetch", "FEEDBACK_LOGS KV namespace not bound");
+      console.error(
+        "FEEDBACK_LOGS KV namespace is not bound. Ensure it's created and configured in wrangler.jsonc."
+      );
+      return new Response("FEEDBACK_LOGS KV namespace not bound", { status: 500 });
     }
     
     logDebug("fetch", "Routing agent request");

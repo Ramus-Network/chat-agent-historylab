@@ -52,6 +52,11 @@
       "binding": "CONVERSATION_LOGS",
       "id": "6f4a584d2e174271b94c80fb51760378",
       "preview_id": "78e0c04db7084b7dba06ecc625923e8c"
+    },
+    {
+      "binding": "FEEDBACK_LOGS",
+      "id": "ce18ad4bd6174c27b0283a06404802f0", // <-- Replace with actual ID
+      "preview_id": "84e1177667614f4793158bbc708a9ce2" // <-- Replace with actual preview ID
     }
   ]
   // ,
