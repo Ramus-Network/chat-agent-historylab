@@ -147,10 +147,11 @@ export default function Chat() {
     // Hash the components
     const hashedId = hashComponents(userId, COLLECTION_ID, newConvoId);
     
-    // Update the URL with the new ID as a query parameter
+    // Update the URL with the new ID as a query parameter using replaceState for the initial load
     const newUrl = new URL(window.location.href);
     newUrl.searchParams.set('id', hashedId);
-    window.history.pushState({}, '', newUrl.toString());
+    // Use replaceState so the initial load doesn't create an extra history entry
+    window.history.replaceState({ conversationId: hashedId }, '', newUrl.toString());
     
     return hashedId;
   });
@@ -188,9 +189,10 @@ export default function Chat() {
     
     const newUrl = new URL(window.location.href);
     newUrl.searchParams.set('id', hashedId);
-    window.history.pushState({}, '', newUrl.toString());
-    
-    // Clear history
+    // Use pushState here to create a new history entry for the *new* conversation
+    window.history.pushState({ conversationId: hashedId }, '', newUrl.toString());
+
+    // Clear history for the *new* conversation
     clearHistory();
     
     return hashedId;
@@ -305,30 +307,59 @@ export default function Chat() {
 
   // Handle browser back/forward navigation
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = (event: PopStateEvent) => {
       const urlParams = new URLSearchParams(window.location.search);
       const idFromUrl = urlParams.get('id');
-      
-      if (idFromUrl && idFromUrl.length > 20) {
+      const stateConversationId = event.state?.conversationId; // Get ID from history state if available
+
+      console.log("Popstate event:", { idFromUrl, stateConversationId, currentState: conversationId });
+
+      // Prefer the ID from the history state object if it exists and differs from current
+      const targetId = stateConversationId || idFromUrl;
+
+      if (targetId && targetId !== conversationId) {
         try {
-          // Try to decode it to ensure it's valid
-          const decoded = decodeHashedComponents(idFromUrl);
-          setConversationId(idFromUrl);
-          clearHistory(); // Clear and reload chat for the new ID
+          // Validate the ID format (optional but good practice)
+          decodeHashedComponents(targetId);
+          console.log(`Restoring conversation ID from history: ${targetId}`);
+          setConversationId(targetId);
+          // !! DO NOT clearHistory() here - we want to load the existing messages !!
+          // The useAgentChat hook should reload messages automatically when 'agent' changes due to 'conversationId' update.
         } catch (e) {
-          console.error('Invalid conversation ID from URL:', e);
-          // Create a new conversation if the ID is invalid
+          console.error('Invalid conversation ID during popstate:', e, targetId);
+          // If ID is invalid, create a new one (might happen on corrupted history)
           createNewConversation();
         }
-      } else {
-        // Create a new conversation if no ID is found
-        createNewConversation();
+      } else if (!targetId) {
+         // If no ID is found in URL or state (e.g., navigated back to root before initial load was replaced)
+         console.log("No valid ID found on popstate, creating new conversation.");
+         // This case should be less common now with replaceState on initial load
+         createNewConversation();
       }
+      // If targetId === conversationId, do nothing (already on the correct state)
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [clearHistory]);
+  }, [conversationId, clearHistory]); // Add conversationId to dependencies
+
+  // Warn user before leaving if they have messages
+  /* useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Only show confirmation if there are messages and the chat isn't in an error state
+      if (agentMessages.length > 0 && status !== "error") {
+        event.preventDefault(); // Standard practice
+        event.returnValue = 'You have an ongoing conversation. Are you sure you want to leave?'; // For older browsers
+        return 'You have an ongoing conversation. Are you sure you want to leave?'; // For modern browsers
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [agentMessages, status]); // Re-run if messages or status change */
 
   // Scroll to bottom when a new message is added
   useEffect(() => {
@@ -531,7 +562,14 @@ export default function Chat() {
               <div className="pl-2 text-[10px]">
                 {/* Custom display for submitFeedback result */} 
                 {toolInvocation.toolName === 'submitFeedback' && typeof toolInvocation.result === 'object' && toolInvocation.result !== null ? (
-                  toolInvocation.result.success ? (
+                  // Handle specific rejection status first
+                  toolInvocation.result.status === 'rejected_by_user' ? (
+                    <div className="flex items-center gap-1.5 text-orange-700 text-xs font-medium mt-1">
+                      <AlertTriangle className="h-3.5 w-3.5 text-orange-600" />
+                      <span>Feedback Submission Rejected by User.</span>
+                    </div>
+                  // Handle success/failure if not rejected
+                  ) : toolInvocation.result.success ? (
                     <div className="flex items-center gap-1.5 text-green-700 text-xs font-medium mt-1">
                       <Check className="h-3.5 w-3.5 text-green-600" />
                       <span>{toolInvocation.result.message || "Feedback submitted successfully!"}</span>

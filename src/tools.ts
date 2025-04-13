@@ -175,7 +175,7 @@ const queryCollection = tool({
  * The tool automatically captures the conversation context.
  */
 const submitFeedback = tool({
-  description: "Submits feedback. Used automatically for technical issues (e.g., tool failures, unexpected empty results) OR after asking the user for confirmation when they express any feedback/emotion.",
+  description: "Submits feedback. Use this tool for filing reports about technical issues (e.g., tool failures, unexpected empty results) or when the user expresses any feedback/emotion about the service. Requires user confirmation.",
   parameters: z.object({
     description: z.string().describe("A detailed description that includes: (1) the specific technical issue or user feedback, (2) relevant context from the conversation (what the user was trying to accomplish), and (3) how this feedback relates to their research or experience."),
   }),
@@ -193,11 +193,74 @@ export const tools = {
   submitFeedback
 };
 
-// /**
-//  * Implementation of confirmation-required tools
-//  * This object contains the actual logic for tools that need human approval
-//  * Each function here corresponds to a tool above that doesn't have an execute function
-//  */
+/**
+ * Recursively traverses an object or array and truncates long strings.
+ * @param data The data to process (object, array, string, etc.).
+ * @param maxLength The maximum allowed length for strings.
+ * @returns The processed data with long strings truncated.
+ */
+function truncateLargeStrings(data: any, maxLength: number): any {
+  if (typeof data === 'string') {
+    return data.length > maxLength ? data.substring(0, maxLength) + '...' : data;
+  } else if (Array.isArray(data)) {
+    return data.map(item => truncateLargeStrings(item, maxLength));
+  } else if (data !== null && typeof data === 'object') {
+    const newData: { [key: string]: any } = {};
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        newData[key] = truncateLargeStrings(data[key], maxLength);
+      }
+    }
+    return newData;
+  }
+  // Return numbers, booleans, null, undefined as is
+  return data;
+}
+
+/**
+ * Filters the conversation history to remove large tool result content,
+ * suitable for feedback submission.
+ * @param messages The original array of messages.
+ * @returns A new array with filtered messages.
+ */
+function filterConversationForFeedback(messages: any[]) {
+  return messages.map(message => {
+    // Deep copy message to avoid modifying the original agent state
+    const filteredMessage = JSON.parse(JSON.stringify(message));
+
+    const charLimit = 1000;
+
+    if (filteredMessage.role === 'assistant' && filteredMessage.toolInvocations) {
+      filteredMessage.toolInvocations = filteredMessage.toolInvocations.map((invocation: any) => {
+        if (invocation.result) {
+           try {
+             // Universally truncate long strings in the result object/array
+             const truncatedResult = truncateLargeStrings(invocation.result, charLimit);
+             return { ...invocation, result: truncatedResult };
+           } catch (error) {
+             logDebug("filterConversationForFeedback", `Error truncating tool result for ${invocation.toolName}: ${error}`, { invocation });
+             // Fallback: Replace the entire result if truncation fails unexpectedly
+             return { ...invocation, result: { error: "Failed to truncate tool result content." } };
+           }
+        }
+        return invocation; // No result to filter or filter failed
+      });
+    }
+
+    // Optionally, truncate long assistant text content itself if needed
+    if (filteredMessage.role === 'assistant' && filteredMessage.content && typeof filteredMessage.content === 'string') {
+      filteredMessage.content = truncateLargeStrings(filteredMessage.content, 1000); // Limit assistant text too
+    }
+
+    return filteredMessage;
+  });
+}
+
+/**
+ * Implementation of confirmation-required tools
+ * This object contains the actual logic for tools that need human approval
+ * Each function here corresponds to a tool above that doesn't have an execute function
+ */
 export const executions = {
   submitFeedback: async ({ description }: { description: string }) => {
     logInfo("SubmitFeedback", `Received feedback submission request.`);
@@ -205,8 +268,11 @@ export const executions = {
     try {
       const agent = getAgent();
       const feedbackKV = agent.getFeedbackKV();
-      const messages = agent.messages;
+      const messages = agent.messages; // Original messages
       const agentName = agent.name || 'unknown-agent';
+
+      // Filter the conversation history
+      const filteredConversation = filterConversationForFeedback(messages);
 
       // Decode user/convo IDs (reuse existing logic if possible, or basic split)
       // Basic split for now, ideally reuse decodeHashedComponents if accessible
@@ -233,7 +299,7 @@ export const executions = {
         collectionId,
         convoId,
         description,
-        conversation: messages, // Includes full message history
+        conversation: filteredConversation, // Use the filtered conversation
       };
 
       // Save to KV

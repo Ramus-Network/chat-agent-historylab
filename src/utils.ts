@@ -110,7 +110,12 @@ export async function processToolCalls<
         }
       } else if (toolInvocation.result === APPROVAL.NO) {
         logInfo("processToolCalls", `Tool execution denied by user: ${toolName}`);
-        result = "Error: User denied access to tool execution";
+        // Return a structured object indicating user rejection, not a generic error string.
+        result = { 
+          status: 'rejected_by_user', 
+          toolName: toolName,
+          message: 'User denied access to tool execution.' 
+        };
       } else {
         logDebug("processToolCalls", "Unhandled tool response", { result: toolInvocation.result });
         // For any unhandled responses, return the original part.
