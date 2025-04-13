@@ -1,111 +1,90 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
-
-@custom-variant dark (&:where(.dark, .dark *));
+/* @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Source+Sans+Pro:wght@400;600;700&family=Source+Code+Pro:wght@400;600&display=swap'); */
+/* Font loading assumed via external method (e.g., Typekit/Adobe Fonts script in HTML) */
 
 :root {
-  --background: 240 10% 8%;
-  --foreground: 0 0% 100%;
+  /* Dark Theme v2 */
+  --background: 0, 0%, 35%; /* Medium Dark Gray (#595959) */
+  --foreground: 0, 0%, 98%; /* Near White */
   
-  --card: 240 10% 6%;
-  --card-foreground: 0 0% 100%;
-  
-  --popover: 240 10% 4%;
-  --popover-foreground: 0 0% 100%;
-  
-  --primary: 210 76% 46%;
-  --primary-foreground: 0 0% 100%;
-  
-  --secondary: 240 4% 16%;
-  --secondary-foreground: 0 0% 98%;
-  
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 64%;
-  
-  --accent: 120 100% 40%;
-  --accent-foreground: 0 0% 98%;
-  
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
-  
-  --success: 142 76% 36%;
-  --success-foreground: 0 0% 98%;
-  
-  --border: 240 5% 26%;
-  --assistant-border: 240 5% 26%;
-  --input: 240 5% 26%;
-  --input-background: 240 5% 26%;
-  --ring: 240 5% 64%;
-  
-  --radius: 0.5rem;
-  
-  --sidebar: 240 10% 5%;
-  --sidebar-foreground: 0 0% 95%;
-  --sidebar-primary: 0 0% 98%;
-  --sidebar-primary-foreground: 240 10% 4%;
-  --sidebar-accent: 120 100% 40%;
-  --sidebar-accent-foreground: 0 0% 98%;
-  --sidebar-border: 240 5% 26%;
-  --sidebar-ring: 240 5% 64%;
-  
-  /* Terminal green color */
-  --terminal-green: 120 100% 70%;
-  
-  /* Off-white color for UI elements */
-  --ui-text: #E0E0E0;
-}
+  --theme-blue: 209, 70%, 65%; /* Lighter Blue for Dark Mode (#6CA0D6) */
 
-.dark {
-  --background: 240 10% 8%;
-  --foreground: 0 0% 100%;
+  --card: 0, 0%, 15%; /* Darker Gray for chat body (#262626) */
+  --card-foreground: var(--foreground);
   
-  --card: 240 10% 6%;
-  --card-foreground: 0 0% 100%;
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
   
-  --popover: 240 10% 4%;
-  --popover-foreground: 0 0% 100%;
+  --primary: var(--theme-blue);
+  --primary-foreground: 0, 0%, 10%; /* Near Black for contrast on light blue */
   
-  --primary: 210 76% 46%;
-  --primary-foreground: 0 0% 100%;
+  --secondary: 0, 0%, 25%; /* Medium Dark Gray (#404040) */
+  --secondary-foreground: var(--foreground);
   
-  --secondary: 240 4% 16%;
-  --secondary-foreground: 0 0% 98%;
+  --muted: 0, 0%, 20%; /* Darker Muted Gray (#333333) */
+  --muted-foreground: 0, 0%, 70%; /* Lighter Gray for muted text */
   
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 64%;
+  --accent: var(--theme-blue);
+  --accent-foreground: var(--primary-foreground);
   
-  --accent: 120 100% 40%;
-  --accent-foreground: 0 0% 98%;
+  --destructive: 0, 70%, 55%; /* Adjusted Red for dark mode */
+  --destructive-foreground: 0, 0%, 98%; /* White */
   
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
+  --warning: 38, 90%, 60%; /* Adjusted Yellow for dark mode */
+  --warning-foreground: 0, 0%, 10%; /* Near Black */
   
-  --success: 142 76% 36%;
-  --success-foreground: 0 0% 98%;
+  --success: 142, 70%, 45%; /* Adjusted Green for dark mode */
+  --success-foreground: 0, 0%, 98%; /* White */
   
-  --border: 240 5% 26%;
-  --assistant-border: 240 5% 26%;
-  --input: 240 5% 26%;
-  --input-background: 240 5% 26%;
-  --ring: 240 5% 64%;
+  --border: var(--theme-blue); /* Use theme blue for borders */
+  --input: 0, 0%, 25%; /* Input field border/bg (#404040) */
+  --input-background: 0, 0%, 18%; /* Input field inner background */
+  --ring: var(--theme-blue); /* Ring color remains blue */
   
   --radius: 0.5rem;
   
-  --sidebar: 240 10% 5%;
-  --sidebar-foreground: 0 0% 95%;
-  --sidebar-primary: 0 0% 98%;
-  --sidebar-primary-foreground: 240 10% 4%;
-  --sidebar-accent: 120 100% 40%;
-  --sidebar-accent-foreground: 0 0% 98%;
-  --sidebar-border: 240 5% 26%;
-  --sidebar-ring: 240 5% 64%;
+  /* Font Variables (Ensure fonts are loaded via Typekit/Adobe Fonts) */
+  --font-sans: 'Proxima Nova', system-ui, sans-serif;
+  --font-serif: 'Adobe Garamond Pro', Georgia, serif;
+  --font-display: 'Trajan Pro 3', serif; 
+  --font-mono: 'Source Code Pro', monospace; /* Keeping Source Code Pro for mono */
+
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-border: var(--border); /* Use blue border */
   
-  /* Terminal green color */
-  --terminal-green: 120 100% 70%;
+  /* UI colors */
+  --ui-text: var(--theme-blue); /* Keep headers/tool calls blue */
+  --message-user-bg: hsl(var(--secondary)); /* User messages use secondary background */
+  --message-assistant-bg: hsl(var(--card)); /* Assistant messages use card background (darker gray) */
+  --message-border: hsl(var(--border)); /* Border for messages (blue) */
+  --header-bg: 0, 0%, 10%; /* Near Black Header (#1a1a1a) */
+  --footer-bg: hsl(var(--header-bg)); /* Footer matches header */
+
+  /* Tool Invocation Colors */
+  --tool-bg: hsl(var(--secondary)); /* Tool background */
+  --tool-text-header: hsl(var(--primary)); /* Keep tool headers blue */
+  --tool-text-value: hsl(var(--primary)); /* Keep tool values blue */
+
+  /* Custom Container Colors */
+  --outer-container-bg: hsl(var(--background)); /* Medium dark gray */
+  --glass-panel-bg: hsl(var(--card)); /* Darker gray for chat body */
+  --inner-container-bg: hsl(var(--card)); /* Match glass panel */
+  --glass-panel-border: hsl(var(--border)); /* Glass panel border (blue) */
+
+  /* Streamlit colors (updated for consistency) - Keep names, update values */
+  --streamlit-orange: var(--theme-blue); /* Using theme blue */
+  --streamlit-orange-hover: 209, 70%, 60%; /* Slightly darker blue */
+  --streamlit-blue: var(--theme-blue);
+  --info-banner-bg: hsl(var(--muted)); /* Info banner background */
+  --info-banner-text: hsl(var(--foreground)); /* Info banner text is white */
+  --link-color: hsl(var(--primary)); /* Links remain blue */
 }
 
 @theme inline {
   --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-display: var(--font-display);
   --font-mono: var(--font-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -113,38 +92,29 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
+  --color-primary: var(--primary); /* Inherits --theme-blue */
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
+  --color-accent: var(--accent); /* Inherits --theme-blue */
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-assistant-border: var(--assistant-border);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border); /* Inherits --theme-blue */
   --color-input: var(--input);
   --color-input-background: var(--input-background);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
+  --color-ring: var(--ring); /* Inherits --theme-blue */
   --radius-sm: calc(var(--radius) - 1px);
   --radius-md: calc(var(--radius));
   --radius-lg: calc(var(--radius) + 2px);
   --radius-xl: calc(var(--radius) + 4px);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border); /* Inherits --theme-blue */
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
@@ -169,13 +139,15 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50 selection:bg-accent/20 selection:text-white;
+    @apply border-border outline-ring/50 selection:bg-primary/20 selection:text-primary-foreground; /* Updated selection text */
   }
   
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Space Mono', monospace;
-    background-color: rgb(18, 20, 24);
+    font-family: var(--font-sans);
+    /* Removed body border */
+    /* border: 1px solid hsl(var(--border)); */ 
+    /* border-radius: 0.375rem; */
   }
 
   html {
@@ -184,196 +156,357 @@
 }
 
 @layer utilities {
-  .glass-morphism {
-    @apply backdrop-blur-lg bg-black/30 border border-white/10 shadow-md;
+  .shadow-card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1);
   }
   
-  .glass-panel {
-    @apply backdrop-blur-md bg-black/40 border border-white/10 shadow-md;
+  .shadow-card-hover {
+    box-shadow: 0 3px 6px rgba(0,0,0,0.1), 0 3px 6px rgba(0,0,0,0.15);
+    transition: all 0.3s ease-in-out;
   }
   
   .document-border {
-    @apply border border-[#5cff5c]/30 rounded-sm;
+    /* Now uses the main border color */
+    border: 1px solid hsl(var(--border)); /* Blue border */
+    border-radius: 0.375rem;
+  }
+  
+  .glass-panel {
+    background-color: hsl(var(--glass-panel-bg));
+    border: 1px solid hsl(var(--glass-panel-border));
+    border-radius: 0.5rem;
+  }
+
+  .message-outer-border {
+    @apply border border-transparent p-1 rounded-lg; /* Keep transparent, just for spacing */
+  }
+
+  .message-bubble-border {
+    @apply border border-border rounded-sm overflow-hidden; /* Use theme border (blue) */
+  }
+  
+  .message-container { /* Legacy class, maybe remove later */
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--message-border); /* Blue border */
+  }
+  
+  .message-user {
+    background-color: hsl(var(--secondary)); /* User messages use secondary background */
+  }
+  
+  .message-assistant {
+    background-color: hsl(var(--card)); /* Assistant messages use card background (darker gray) */
+  }
+  
+  .tool-invocation-box {
+    background-color: hsl(var(--tool-bg));
+    color: hsl(var(--tool-text-header)); /* Uses --tool-text-header which uses --primary */
+    @apply p-3 my-2 border border-primary rounded-md; /* Uses --primary (blue) border */
+  }
+  .tool-invocation-header {
+    @apply font-mono text-xs mb-2 font-semibold;
+  }
+  .tool-invocation-param-header {
+    @apply font-mono text-xs mb-1 font-semibold;
+  }
+  .tool-invocation-result-header {
+    @apply font-mono text-xs mb-1 font-semibold;
+  }
+  .tool-invocation-value {
+    color: hsl(var(--tool-text-value)); /* Uses --tool-text-value which uses --primary */
+    @apply font-normal;
+  }
+  .tool-invocation-param-item {
+    @apply pl-2 text-[10px] flex flex-wrap;
+  }
+  .tool-invocation-result-item {
+    @apply pl-2 text-[10px];
+  }
+  .tool-invocation-doc-link {
+    color: hsl(var(--tool-text-value)); /* Uses --tool-text-value which uses --primary */
+    @apply hover:underline;
+  }
+
+  .button-primary {
+    background-color: hsl(var(--primary)); /* Uses --primary */
+    color: hsl(var(--primary-foreground));
+    border-radius: var(--radius);
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  
+  .button-primary:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .button-secondary {
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    border-radius: var(--radius);
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  
+  .button-secondary:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .streamlit-header { 
+    background-color: hsl(var(--header-bg)); /* Near Black */
+    border-bottom: 1px solid hsl(var(--border)); /* Blue border */
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: var(--radius) var(--radius) 0 0;
+    color: hsl(var(--primary)); /* Uses --primary */
+  }
+  
+  .streamlit-footer { 
+    background-color: hsl(var(--footer-bg)); /* Near Black */
+    border-top: 1px solid hsl(var(--border)); /* Blue border */
+    padding: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  
+  .input-container {
+    border: 1px solid hsl(var(--border)); /* Blue border */
+    border-radius: var(--radius);
+    background-color: hsl(var(--input-background)); /* Dark */
+    transition: all 0.2s ease-in-out;
+    @apply relative flex-1;
+  }
+  
+  .input-container:focus-within {
+    border-color: hsl(var(--primary)); /* Uses --primary */
+    box-shadow: 0 0 0 2px hsla(var(--primary), 0.2); /* Uses --primary */
+  }
+
+  .text-input-area {
+    @apply w-full bg-input-background py-2 px-4 text-foreground shadow-sm font-mono text-sm placeholder:text-muted-foreground/50 focus:outline-none resize-none pr-12 pb-12 rounded-md;
+    font-family: var(--font-sans); /* Use sans font */
+  }
+
+  .info-banner {
+    background-color: hsl(var(--info-banner-bg)); /* Muted bg */
+    color: hsl(var(--info-banner-text)); /* White text */
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    margin-bottom: 1.5rem;
+  }
+
+  .info-banner a {
+    color: hsl(var(--link-color)); /* Uses --link-color which uses --primary */
+    text-decoration: none;
+  }
+
+  .info-banner a:hover {
+    text-decoration: underline;
   }
   
   .terminal-header {
-    @apply bg-black px-3 py-1 font-mono text-[#E0E0E0] text-xs flex items-center justify-between border-b border-[#5cff5c]/20;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    border-bottom: 1px solid hsla(var(--border), 0.3); /* Lighter blue border */
+    display: flex;
+    align-items: center;
   }
   
-  .digital-display {
-    @apply font-mono text-[#E0E0E0] tracking-wider bg-black/60 px-2 py-1 rounded-sm border border-[#5cff5c]/30;
-  }
-
-  .text-terminal-green {
-    @apply text-[#5cff5c];
+  .markdown-condensed h1, 
+  .markdown-condensed h2, 
+  .markdown-condensed h3, 
+  .markdown-condensed h4, 
+  .markdown-condensed h5, 
+  .markdown-condensed h6 {
+    margin-top: 0.75em;
+    margin-bottom: 0.5em;
   }
   
-  .text-ui {
-    @apply text-[#E0E0E0];
+  .markdown-condensed p {
+    margin-bottom: 0.5em;
+  }
+  
+  .markdown-condensed ul, 
+  .markdown-condensed ol {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    padding-left: 1.5em;
   }
   
   .icon-visible {
-    @apply text-[#E0E0E0] hover:text-white;
+    transform: scale(1);
+    opacity: 1;
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .icon-hidden {
+    transform: scale(0.8);
+    opacity: 0;
+    transition: all 0.2s ease-in-out;
   }
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling using variables */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: hsl(var(--secondary) / 0.1); /* Uses --secondary */
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: hsl(var(--primary) / 0.3); /* Uses --primary */
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: hsl(var(--primary) / 0.5); /* Uses --primary */
 }
 
-/* Markdown styling */
-.markdown-code {
-  background-color: rgba(0, 0, 0, 0.4);
+/* Markdown styling using variables */
+.markdown-content {
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+.markdown-content code {
+  background-color: hsl(var(--secondary) / 0.3); /* Uses --secondary */
   border-radius: 4px;
   padding: 0.1em 0.3em;
-  font-family: 'Space Mono', monospace;
-  font-size: 0.85em;
-}
-
-/* Syntax highlighting for code blocks */
-.markdown-code-block {
-  background-color: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(92, 255, 92, 0.2);
-  border-radius: 4px;
-  padding: 0.5em;
-  margin: 0.4em 0;
-  overflow-x: auto;
-  font-family: 'Space Mono', monospace;
-  font-size: 0.85em;
-  line-height: 1.2;
-}
-
-/* Table styling */
-.markdown-table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0.4em 0;
-}
-.markdown-table th,
-.markdown-table td {
-  border: 1px solid rgba(92, 255, 92, 0.3);
-  padding: 0.3em;
-  text-align: left;
-}
-.markdown-table th {
-  background-color: rgba(0, 0, 0, 0.4);
-  font-weight: bold;
-}
-
-/* Quote styling */
-.markdown-blockquote {
-  border-left: 2px solid rgba(92, 255, 92, 0.5);
-  padding-left: 0.5em;
-  margin: 0.3em 0;
-  font-style: italic;
-}
-
-/* Link styling */
-.markdown-link {
-  color: #5cff5c;
-  text-decoration: underline;
-  transition: color 0.2s ease;
-}
-.markdown-link:hover {
-  color: #8fff8f;
-}
-
-/* List styling */
-.markdown ul,
-.markdown ol {
-  margin-top: 0.1em;
-  margin-bottom: 0.1em;
-  padding-left: 1.2em;
-}
-
-.markdown li {
-  margin-bottom: 0.1em;
-}
-
-.markdown li:last-child {
-  margin-bottom: 0;
-}
-
-/* Nested lists */
-.markdown li > ul,
-.markdown li > ol {
-  margin-top: 0.1em;
-  margin-bottom: 0;
-}
-
-/* Condensed styles for ReactMarkdown */
-.markdown-condensed {
-  line-height: 1.2;
+  font-family: var(--font-mono);
   font-size: 0.9em;
 }
 
-.markdown-condensed p {
-  margin-top: 0.2em !important;
-  margin-bottom: 0.2em !important;
+/* Syntax highlighting for code blocks */
+.markdown-content pre {
+  background-color: hsl(var(--secondary) / 0.2); /* Uses --secondary */
+  border: 1px solid hsl(var(--border) / 0.2); /* Uses --border */
+  border-radius: var(--radius);
+  padding: 1em;
+  margin: 1em 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  line-height: 1.5;
 }
 
-.markdown-condensed h1 {
-  font-size: 1.2em !important;
-  margin-top: 0.4em !important;
-  margin-bottom: 0.2em !important;
+/* Table styling */
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
-.markdown-condensed h2 {
-  font-size: 1.1em !important;
-  margin-top: 0.3em !important;
-  margin-bottom: 0.2em !important;
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid hsl(var(--border) / 0.2); /* Uses --border */
+  padding: 0.5em;
+  text-align: left;
 }
 
-.markdown-condensed h3,
-.markdown-condensed h4 {
-  font-size: 1em !important;
-  margin-top: 0.2em !important;
-  margin-bottom: 0.1em !important;
+.markdown-content th {
+  background-color: hsl(var(--secondary) / 0.2); /* Uses --secondary */
+  font-weight: 600;
 }
 
-.markdown-condensed ul,
-.markdown-condensed ol {
-  margin-top: 0.1em !important;
-  margin-bottom: 0.1em !important;
-  padding-left: 1.2em !important;
+/* Quote styling */
+.markdown-content blockquote {
+  border-left: 4px solid hsl(var(--primary)); /* Uses --primary */
+  padding: 0.5em 1em;
+  margin: 1em 0;
+  background-color: hsl(var(--secondary) / 0.1); /* Uses --secondary */
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 
-.markdown-condensed li {
-  margin-top: 0 !important;
-  margin-bottom: 0.03em !important;
-  line-height: 1.2;
-  padding-top: 0;
-  padding-bottom: 0;
+/* Link styling */
+.markdown-content a, .markdown-link {
+  color: hsl(var(--link-color)); /* Uses --link-color which uses --primary */
+  text-decoration: none;
+  transition: all 0.2s ease-in-out;
 }
 
-.markdown-condensed pre {
-  margin: 0.2em 0 !important;
+.markdown-content a:hover, .markdown-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
 }
 
-.markdown-condensed blockquote {
-  margin: 0.2em 0 !important;
+/* List styling */
+.markdown-content ul,
+.markdown-content ol {
+  margin: 1em 0;
+  padding-left: 2em;
 }
 
-/* Fix first and last child margins */
-.markdown-condensed > *:first-child {
-  margin-top: 0 !important;
+.markdown-content li {
+  margin-bottom: 0.5em;
 }
 
-.markdown-condensed > *:last-child {
-  margin-bottom: 0 !important;
+/* Header styling */
+.bg-header-bg {
+  background-color: hsl(var(--header-bg)); /* Applied directly via variable now */
+  color: hsl(var(--primary)); /* Title color remains blue */
+}
+
+/* General button hover */
+button, a.button {
+  transition: all 0.2s ease;
+}
+
+button:hover, a.button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Specific Button Styles */
+.copy-button {
+   @apply inline-flex h-7 items-center justify-center border border-primary bg-background text-primary text-xs font-medium transition-colors hover:bg-primary hover:text-primary-foreground px-2 gap-1 rounded-md cursor-pointer; /* Uses --primary */
+}
+
+.send-button {
+   @apply border border-primary bg-input-background text-primary hover:bg-primary hover:text-primary-foreground rounded-full p-2 absolute bottom-3 right-3 flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer; /* Changed bg */
+}
+
+.send-button[disabled] {
+  @apply opacity-50 cursor-not-allowed;
+}
+
+/* Header Buttons */
+.header-button {
+  @apply inline-flex h-9 items-center justify-center rounded-md border border-input bg-input-background text-sm font-medium ring-offset-background transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-foreground text-xs cursor-pointer; /* Uses --accent, --primary, --ring */
+}
+.header-button-icon {
+   @apply inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-input-background text-sm font-medium ring-offset-background transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer; /* Uses --accent, --primary, --ring */
+}
+
+/* Footer Styling */
+footer {
+  background-color: hsl(var(--footer-bg));
+  color: var(--foreground);
+  border-top: 1px solid var(--border); /* Blue border */
+}
+
+/* Footer Link Styling */
+footer a {
+  color: var(--primary); /* Link color remains blue */
 }

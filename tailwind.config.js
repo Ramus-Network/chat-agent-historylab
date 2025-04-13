@@ -9,6 +9,8 @@ module.exports = {
 	],
 	safelist: [
 		'font-sans',
+		'font-serif',
+		'font-display',
 		'font-mono',
 		'font-terminal',
 		'font-agency',
@@ -40,8 +42,10 @@ module.exports = {
 		},
 		extend: {
 			fontFamily: {
-				sans: ["system-ui", "sans-serif"],
-				mono: ['"Space Mono"', 'monospace'],
+				sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+				serif: ['var(--font-serif)', 'Georgia', 'serif'],
+				display: ['var(--font-display)', 'serif'],
+				mono: ['var(--font-mono)', 'monospace'],
 				terminal: ['"VT323"', 'monospace'],
 				agency: ['"Bebas Neue"', 'sans-serif'],
 				special: ['"Special Elite"', 'cursive'],

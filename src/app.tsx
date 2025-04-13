@@ -1,7 +1,7 @@
 // app.tsx
 
 // React hooks for managing component state and lifecycle
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 // Hooks from Cloudflare Agents SDK for frontend integration
 import { useAgent } from "agents-sdk/react";
 // Hook to manage chat interactions with the agent
@@ -32,6 +32,9 @@ import {
   Square,
   AlertTriangle,
   RefreshCw,
+  Settings,
+  User,
+  Bot,
 } from "lucide-react";
 
 // Collection ID constant (matches the server-side constant)
@@ -80,14 +83,6 @@ function decodeHashedComponents(hash: string): { userId: string, collectionId: s
 }
 
 export default function Chat() {
-  // State for theme management (dark/light mode)
-  // Uses localStorage to persist user preference
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    // Check localStorage first, default to dark if not found
-    const savedTheme = localStorage.getItem("theme");
-    return (savedTheme as "dark" | "light") || "dark";
-  });
-  
   // Get or create userId from cookies
   const [userId, setUserId] = useState<string>(() => {
     // Try to get userId from cookies
@@ -164,38 +159,20 @@ export default function Chat() {
   
   // Reference to the bottom of the messages container for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Function to scroll to the bottom of messages
-  // Wrapped in useCallback to avoid unnecessary re-renders
+  // Function to scroll the message container to the bottom
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
   }, []);
 
-  // Effect to apply theme classes to the document
-  // Runs on mount and whenever theme changes
+  // Scroll to bottom on initial mount or when a new conversation starts
   useEffect(() => {
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-      document.documentElement.classList.remove("light");
-    } else {
-      document.documentElement.classList.remove("dark");
-      document.documentElement.classList.add("light");
-    }
-
-    // Save theme preference to localStorage
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  // Scroll to bottom on component mount
-  useEffect(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
-
-  // Function to toggle between dark and light theme
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-  };
+    // Use a timeout to ensure layout is complete
+    setTimeout(scrollToBottom, 100);
+  }, [conversationId, scrollToBottom]);
 
   // Function to create a new conversation ID
   const createNewConversation = () => {
@@ -352,10 +329,34 @@ export default function Chat() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [clearHistory]);
 
-  // Auto-scroll to bottom when messages change
+  // Scroll to bottom when a new message is added
   useEffect(() => {
-    agentMessages.length > 0 && scrollToBottom();
-  }, [agentMessages, scrollToBottom]);
+    if (agentMessages.length > 0) {
+      // Scroll when the number of messages increases (new message added)
+      scrollToBottom();
+    }
+  }, [agentMessages.length, scrollToBottom]);
+
+  // Extract text content from the last message for dependency tracking
+  const lastMessageContent = useMemo(() => {
+    const lastMessage = agentMessages[agentMessages.length - 1];
+    if (!lastMessage || !lastMessage.parts) return '';
+    return lastMessage.parts
+      .filter(part => part.type === 'text')
+      .map(part => (part.type === 'text' ? part.text : ''))
+      .join('');
+  }, [agentMessages]);
+
+  // Auto-scroll during streaming
+  useEffect(() => {
+    if (status === 'streaming') {
+      // Use a small timeout to allow the DOM to update after new text arrives
+      const timer = setTimeout(() => {
+        scrollToBottom();
+      }, 50); // 50ms delay
+      return () => clearTimeout(timer); // Cleanup timeout on effect re-run or unmount
+    }
+  }, [status, lastMessageContent, scrollToBottom]); // Trigger on status change or last message content change
 
   // Format timestamp for message display
   const formatTime = (date: Date) => {
@@ -365,33 +366,32 @@ export default function Chat() {
   // Render message content with styling and markdown support
   const renderMessageContent = (text: string, messageId: string) => {
     return (
-      <div className="whitespace-pre-wrap break-words text-[#5cff5c] markdown-condensed">
-        <ReactMarkdown 
-          rehypePlugins={[rehypeRaw]} 
+      <div className="whitespace-pre-wrap break-words text-gray-800 markdown-condensed">
+        <ReactMarkdown
+          rehypePlugins={[rehypeRaw]}
           remarkPlugins={[remarkGfm]}
           components={{
-            // Style different markdown elements while maintaining the terminal green color
-            h1: ({node, ...props}) => <h1 className="text-[#5cff5c] font-bold" {...props} />,
-            h2: ({node, ...props}) => <h2 className="text-[#5cff5c] font-bold" {...props} />,
-            h3: ({node, ...props}) => <h3 className="text-[#5cff5c] font-bold" {...props} />,
-            h4: ({node, ...props}) => <h4 className="text-[#5cff5c] font-bold" {...props} />,
-            p: ({node, ...props}) => <p className="text-[#5cff5c]" {...props} />,
-            a: ({node, ...props}) => <a className="markdown-link" {...props} />,
-            strong: ({node, ...props}) => <strong className="text-[#5cff5c] font-bold" {...props} />,
-            em: ({node, ...props}) => <em className="text-[#5cff5c] italic" {...props} />,
-            ul: ({node, ...props}) => <ul className="text-[#5cff5c] list-disc" {...props} />,
-            ol: ({node, ...props}) => <ol className="text-[#5cff5c] list-decimal" {...props} />,
-            li: ({node, ...props}) => <li className="text-[#5cff5c]" {...props} />,
-            blockquote: ({node, ...props}) => <blockquote className="markdown-blockquote text-[#5cff5c]" {...props} />,
-            code: ({node, inline, className, ...props}: any) => 
-              inline 
-                ? <code className="markdown-code text-[#5cff5c]" {...props} />
-                : <code className="markdown-code-block text-[#5cff5c] block" {...props} />,
-            pre: ({node, ...props}) => <pre className="markdown-code-block text-[#5cff5c]" {...props} />,
-            table: ({node, ...props}) => <table className="markdown-table text-[#5cff5c]" {...props} />,
-            th: ({node, ...props}) => <th className="text-[#5cff5c]" {...props} />,
-            td: ({node, ...props}) => <td className="text-[#5cff5c]" {...props} />,
-            hr: ({node, ...props}) => <hr className="border-[#5cff5c]/30 my-2" {...props} />,
+            h1: ({node, ...props}) => <h1 className="text-gray-900 font-bold text-xl mb-2 mt-3" {...props} />,
+            h2: ({node, ...props}) => <h2 className="text-gray-900 font-bold text-lg mb-2 mt-3" {...props} />,
+            h3: ({node, ...props}) => <h3 className="text-gray-900 font-bold text-base mb-1 mt-2" {...props} />,
+            h4: ({node, ...props}) => <h4 className="text-gray-900 font-bold text-sm mb-1 mt-2" {...props} />,
+            p: ({node, ...props}) => <p className="text-gray-800 mb-2" {...props} />,
+            a: ({node, ...props}) => <a className="text-[#6CA0D6] hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+            strong: ({node, ...props}) => <strong className="text-gray-900 font-semibold" {...props} />,
+            em: ({node, ...props}) => <em className="text-gray-800 italic" {...props} />,
+            ul: ({node, ...props}) => <ul className="text-gray-800 list-disc ml-5 mb-2" {...props} />,
+            ol: ({node, ...props}) => <ol className="text-gray-800 list-decimal ml-5 mb-2" {...props} />,
+            li: ({node, ...props}) => <li className="text-gray-800 mb-1" {...props} />,
+            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-[#6CA0D6] bg-gray-100/50 p-3 my-3 rounded-r-md text-gray-700 italic" {...props} />,
+            code: ({node, inline, className, ...props}: any) =>
+              inline
+                ? <code className="bg-gray-200/70 rounded-md px-1 py-0.5 font-mono text-sm text-gray-800" {...props} />
+                : <pre className="bg-gray-100 border border-gray-200 rounded-md p-4 my-3 overflow-x-auto font-mono text-sm leading-relaxed text-gray-800 block"><code className="bg-transparent p-0 border-none" {...props}/></pre>,
+            pre: ({node, ...props}) => <pre className="bg-gray-100 border border-gray-200 rounded-md p-4 my-3 overflow-x-auto font-mono text-sm leading-relaxed text-gray-800" {...props} />,
+            table: ({node, ...props}) => <table className="table-auto w-full my-3 border-collapse border border-gray-300 rounded-md overflow-hidden text-gray-800" {...props} />,
+            th: ({node, ...props}) => <th className="border border-gray-300 p-2 text-left bg-gray-100 font-semibold" {...props} />,
+            td: ({node, ...props}) => <td className="border border-gray-300 p-2" {...props} />,
+            hr: ({node, ...props}) => <hr className="border-gray-300/80 my-3" {...props} />,
           }}
         >
           {text}
@@ -400,36 +400,35 @@ export default function Chat() {
     );
   };
 
-  // Render reasoning content with grayed out styling and markdown support
+  // Render reasoning content with styling and markdown support
   const renderReasoningContent = (text: string, messageId: string) => {
     return (
-      <div className="whitespace-pre-wrap break-words text-[#a0a0a0] opacity-70 markdown-condensed border-l-2 border-[#a0a0a0]/30 pl-2 my-2">
-        <ReactMarkdown 
-          rehypePlugins={[rehypeRaw]} 
+      <div className="whitespace-pre-wrap break-words text-gray-500 text-xs opacity-90 markdown-condensed border-l-2 border-gray-300 pl-2 my-2">
+        <ReactMarkdown
+          rehypePlugins={[rehypeRaw]}
           remarkPlugins={[remarkGfm]}
           components={{
-            // Style different markdown elements with grayed out colors
-            h1: ({node, ...props}) => <h1 className="text-[#a0a0a0] font-bold" {...props} />,
-            h2: ({node, ...props}) => <h2 className="text-[#a0a0a0] font-bold" {...props} />,
-            h3: ({node, ...props}) => <h3 className="text-[#a0a0a0] font-bold" {...props} />,
-            h4: ({node, ...props}) => <h4 className="text-[#a0a0a0] font-bold" {...props} />,
-            p: ({node, ...props}) => <p className="text-[#a0a0a0]" {...props} />,
-            a: ({node, ...props}) => <a className="text-[#a0a0a0] underline" {...props} />,
-            strong: ({node, ...props}) => <strong className="text-[#a0a0a0] font-bold" {...props} />,
-            em: ({node, ...props}) => <em className="text-[#a0a0a0] italic" {...props} />,
-            ul: ({node, ...props}) => <ul className="text-[#a0a0a0] list-disc" {...props} />,
-            ol: ({node, ...props}) => <ol className="text-[#a0a0a0] list-decimal" {...props} />,
-            li: ({node, ...props}) => <li className="text-[#a0a0a0]" {...props} />,
-            blockquote: ({node, ...props}) => <blockquote className="markdown-blockquote text-[#a0a0a0]" {...props} />,
-            code: ({node, inline, className, ...props}: any) => 
-              inline 
-                ? <code className="markdown-code text-[#a0a0a0]" {...props} />
-                : <code className="markdown-code-block text-[#a0a0a0] block" {...props} />,
-            pre: ({node, ...props}) => <pre className="markdown-code-block text-[#a0a0a0]" {...props} />,
-            table: ({node, ...props}) => <table className="markdown-table text-[#a0a0a0]" {...props} />,
-            th: ({node, ...props}) => <th className="text-[#a0a0a0]" {...props} />,
-            td: ({node, ...props}) => <td className="text-[#a0a0a0]" {...props} />,
-            hr: ({node, ...props}) => <hr className="border-[#a0a0a0]/30 my-2" {...props} />,
+            h1: ({node, ...props}) => <h1 className="text-gray-600 font-semibold" {...props} />,
+            h2: ({node, ...props}) => <h2 className="text-gray-600 font-semibold" {...props} />,
+            h3: ({node, ...props}) => <h3 className="text-gray-600 font-semibold" {...props} />,
+            h4: ({node, ...props}) => <h4 className="text-gray-600 font-semibold" {...props} />,
+            p: ({node, ...props}) => <p className="text-gray-500" {...props} />,
+            a: ({node, ...props}) => <a className="text-gray-500 underline" {...props} />,
+            strong: ({node, ...props}) => <strong className="text-gray-600 font-semibold" {...props} />,
+            em: ({node, ...props}) => <em className="text-gray-500 italic" {...props} />,
+            ul: ({node, ...props}) => <ul className="text-gray-500 list-disc ml-4" {...props} />,
+            ol: ({node, ...props}) => <ol className="text-gray-500 list-decimal ml-4" {...props} />,
+            li: ({node, ...props}) => <li className="text-gray-500" {...props} />,
+            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-400 bg-gray-50 p-2 my-2 rounded-r-md text-gray-500" {...props} />,
+            code: ({node, inline, className, ...props}: any) =>
+              inline
+                ? <code className="bg-gray-200/70 rounded-md px-1 py-0.5 font-mono text-xs text-gray-600" {...props} />
+                : <pre className="bg-gray-100 border border-gray-200 rounded-md p-3 my-2 overflow-x-auto font-mono text-xs leading-relaxed text-gray-600 block"><code className="bg-transparent p-0 border-none" {...props}/></pre>,
+            pre: ({node, ...props}) => <pre className="bg-gray-100 border border-gray-200 rounded-md p-3 my-2 overflow-x-auto font-mono text-xs leading-relaxed text-gray-600" {...props} />,
+            table: ({node, ...props}) => <table className="table-auto w-full my-2 border-collapse rounded-md overflow-hidden text-gray-500 text-xs" {...props} />,
+            th: ({node, ...props}) => <th className="border border-gray-200 p-1 text-left bg-gray-50 font-semibold" {...props} />,
+            td: ({node, ...props}) => <td className="border border-gray-200 p-1" {...props} />,
+            hr: ({node, ...props}) => <hr className="border-gray-200/80 my-2" {...props} />,
           }}
         >
           {text}
@@ -440,50 +439,49 @@ export default function Chat() {
 
   // Render tool invocation with appropriate UI
   const renderToolInvocation = (toolInvocation: any, messageId: string, index: number) => {
-    // Simple rendering for tool invocations
     return (
-      <div key={`${messageId}-tool-${index}`} className="bg-black/40 p-2 my-2 document-border">
-        <div className="font-mono text-xs text-[#E0E0E0] mb-1">
-          Tool: {toolInvocation.toolName}
+      <div key={`${messageId}-tool-${index}`} className="bg-blue-50 p-3 my-3 border border-[#6CA0D6]/50 rounded-md text-gray-700">
+        <div className="font-mono text-xs mb-2 font-semibold text-blue-800">
+          Tool: <span className="font-normal text-blue-700">{toolInvocation.toolName}</span>
         </div>
         {toolInvocation.args && Object.keys(toolInvocation.args).length > 0 && (
-          <div className="font-mono text-xs text-[#A0A0A0] mb-1 mt-1">
-            <div className="mb-1">Parameters:</div>
+          <div className="font-mono text-xs mb-1">
+            <div className="font-semibold text-blue-800">Parameters:</div>
             {Object.entries(toolInvocation.args).map(([key, value]) => (
               <div key={key} className="pl-2 text-[10px] flex flex-wrap">
-                <span className="text-[#E0E0E0] mr-1">{key}:</span>
-                <span className="text-[#5cff5c]">{typeof value === 'string' ? value : JSON.stringify(value)}</span>
+                <span className="text-blue-800/80 mr-1 font-medium">{key}:</span>
+                <span className="font-normal text-blue-700 break-all">{typeof value === 'string' ? value : JSON.stringify(value)}</span>
               </div>
             ))}
           </div>
         )}
         {toolInvocation.state === 'result' && (
-          <div className="font-mono text-xs text-[#A0A0A0] mt-1">
-            <div className="mb-1">Result:</div>
+          <div className="font-mono text-xs mb-1 mt-2">
+            <div className="font-semibold text-blue-800">Result:</div>
             <div className="pl-2 text-[10px]">
               {toolInvocation.result && typeof toolInvocation.result === 'object' && 'matches' in toolInvocation.result ? (
-                <div className="text-[#5cff5c]">
+                <div className="font-normal text-gray-700">
                   <div className="mb-1">Found {toolInvocation.result.matches?.length || 0} documents:</div>
                   {toolInvocation.result.matches?.map((match: any, i: number) => (
                     <div key={i} className="mb-1 pl-2">
-                      <span className="text-[#E0E0E0]">{i+1}. </span>
+                      <span className="text-gray-600">{i+1}. </span>
                       {match.metadata?.file_key ? (
-                        <a 
+                        <a
                           href={`https://r2-text-viewer.nchimicles.workers.dev/${match.metadata.file_key}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[#5cff5c] hover:underline"
+                          className="font-normal text-[#6CA0D6] hover:underline"
                         >
-                          {match.metadata?.doc_id || 'Unknown'}
+                          {match.metadata?.doc_id || 'Unknown Document'}
                         </a>
                       ) : (
-                        <span className="text-[#5cff5c]">{match.metadata?.doc_id || 'Unknown'}</span>
+                        <span className="font-normal text-gray-700">{match.metadata?.doc_id || 'Unknown Document'}</span>
                       )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <span className="text-[#5cff5c]">
+                <span className="font-normal text-gray-700 break-all">
                   {JSON.stringify(toolInvocation.result).substring(0, 200)}{JSON.stringify(toolInvocation.result).length > 200 ? '...' : ''}
                 </span>
               )}
@@ -521,13 +519,13 @@ export default function Chat() {
       <div className="flex justify-end mt-2">
         <button
           onClick={() => copyMessageContent(message)}
-          className="inline-flex h-7 items-center justify-center document-border bg-black/40 text-xs font-medium transition-colors hover:bg-[#5cff5c]/10 px-2 text-[#E0E0E0] gap-1"
+          className="inline-flex h-7 items-center justify-center border border-gray-300 bg-white text-gray-600 text-xs font-medium transition-colors hover:bg-gray-100 hover:text-gray-800 px-2 gap-1 rounded-md cursor-pointer"
           aria-label="Copy message content"
         >
           {copiedMessageId === message.id ? (
             <>
-              <Check className="h-3 w-3 text-[#5cff5c]" />
-              <span className="text-[10px]">COPIED</span>
+              <Check className="h-3 w-3 text-[#6CA0D6]" />
+              <span className="text-[10px] text-[#6CA0D6]">COPIED</span>
             </>
           ) : (
             <>
@@ -562,18 +560,17 @@ export default function Chat() {
 
   // Render the chat interface
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background antialiased transition-all pb-0">
-      <header className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-white/10 shadow-lg">
+    <div className="flex min-h-screen w-full flex-col bg-gray-50 text-gray-800 font-sans antialiased transition-all pb-0 selection:bg-[#6CA0D6] selection:text-white">
+      <header className="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
         <div className="container flex h-14 items-center px-4 md:px-6">
           <div className="flex flex-1 items-center space-x-2 md:justify-between justify-end">
             <div className="w-full flex justify-between items-center">
               <div className="flex items-center space-x-2">
-                {/* <FileText className="h-5 w-5 text-[#5cff5c] mr-1" /> */}
-                <a 
-                  href="https://lab.history.columbia.edu/" 
-                  target="_blank" 
+                <a
+                  href="https://lab.history.columbia.edu/"
+                  target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-xl text-[#E0E0E0] tracking-wider hover:text-[#5cff5c] transition-colors cursor-pointer"
+                  className="font-serif text-xl text-[#6CA0D6] tracking-wide hover:opacity-90 transition-opacity cursor-pointer font-semibold"
                 >
                   HISTORY LAB
                 </a>
@@ -581,44 +578,43 @@ export default function Chat() {
 
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  {/* Chat status indicator */}
-                  {status === "streaming" && (
-                    <div className="px-2 py-1 text-xs font-mono text-[#5cff5c] bg-black/40 document-border">
+                    {status === "streaming" && (
+                    <div className="px-2 py-1 text-xs font-mono bg-blue-100 text-[#6CA0D6] rounded-md border border-blue-200">
                       Processing...
                     </div>
                   )}
                   {status === "ready" && agentMessages.length > 0 && (
-                    <div className="px-2 py-1 text-xs font-mono text-[#5cff5c] bg-black/40 document-border">
+                     <div className="px-2 py-1 text-xs font-mono bg-green-100 text-green-700 rounded-md border border-green-200">
                       Ready
                     </div>
                   )}
                   {status === "error" && (
-                    <div className="px-2 py-1 text-xs font-mono text-red-500 bg-black/40 document-border">
+                    <div className="px-2 py-1 text-xs font-mono bg-red-100 text-red-700 rounded-md border border-red-200">
                       Error
                     </div>
                   )}
                   
                   <button
                     onClick={shareConversationUrl}
-                    className="inline-flex h-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-[#E0E0E0] text-xs cursor-pointer"
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-gray-300 bg-white text-xs font-medium ring-offset-white transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6CA0D6]/50 focus-visible:ring-offset-1 px-2 text-gray-700 cursor-pointer"
                   >
-                    <LinkIcon className="h-4 w-4 icon-visible mr-1" />
+                    <LinkIcon className="h-3.5 w-3.5 icon-visible mr-1 text-gray-500" />
                     <span>{urlCopied ? "COPIED!" : "COPY URL"}</span>
                   </button>
                   <a
                     href={window.location.pathname}
-                    target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex h-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-2 text-[#E0E0E0] text-xs cursor-pointer"
+                    target="_blank"
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-gray-300 bg-white text-xs font-medium ring-offset-white transition-colors transition-transform hover:scale-105 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6CA0D6]/50 focus-visible:ring-offset-1 px-2 text-gray-700 cursor-pointer"
                   >
-                    <ExternalLink className="h-4 w-4 icon-visible mr-1" />
+                    <ExternalLink className="h-3.5 w-3.5 icon-visible mr-1 text-gray-500" />
                     <span>NEW CONV</span>
                   </a>
                   <button
                     onClick={clearHistory}
-                    className="inline-flex h-9 w-9 items-center justify-center document-border bg-black/40 text-sm font-medium ring-offset-background transition-colors hover:bg-[#5cff5c]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-sm font-medium ring-offset-white transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6CA0D6]/50 focus-visible:ring-offset-1 cursor-pointer"
                   >
-                    <Trash className="h-4 w-4 icon-visible" />
+                    <Trash className="h-4 w-4 icon-visible text-gray-500" />
                     <span className="sr-only">Clear history</span>
                   </button>
                 </div>
@@ -628,25 +624,24 @@ export default function Chat() {
         </div>
       </header>
       <div className="flex-1 overflow-hidden">
-        <div className="glass-panel mx-auto max-w-5xl mt-4 mb-0 flex-1 overflow-hidden px-4 lg:px-8 py-0">
+        <div className="mx-auto max-w-6xl mt-4 mb-0 flex-1 overflow-hidden px-4 lg:px-8 py-0 bg-white border border-gray-200 rounded-lg shadow-sm">
           <div className="flex flex-col h-[calc(100vh-7.5rem)] overflow-hidden">
-            {/* Message interface */}
-            <div className="flex-1 overflow-y-auto mt-2" ref={messagesEndRef}>
+            <div className="flex-1 overflow-y-auto mt-2 pr-2 custom-scrollbar" ref={scrollContainerRef}>
               <div className="pb-[40px]">
                 {agentMessages.length === 0 ? (
-                  <div className="glass-panel p-4 m-4 mt-8">
-                    <div className="document-border p-4 bg-black/60">
-                      <h4 className="font-mono text-[#E0E0E0] mb-2 text-left text-sm">HISTORY LAB RESEARCH ASSISTANT</h4>
-                      <div className="markdown-condensed text-[#5cff5c] text-sm text-left mb-3 font-mono">
+                  <div className="bg-white p-4 m-4 mt-8 rounded-lg border border-gray-200">
+                    <div className="rounded-md border border-gray-200 p-6 bg-white">
+                      <h4 className="font-serif text-gray-800 mb-3 text-left text-lg">HISTORY LAB RESEARCH ASSISTANT</h4>
+                      <div className="markdown-condensed text-[#6CA0D6] text-sm text-left mb-4 font-sans">
                         {renderMessageContent(`
 # Welcome to HistoryLab AI
 
-An AI assistant for exploring declassified government documents, diplomatic cables, intelligence reports, and historical archives.
+An AI assistant for exploring declassified government documents, diplomatic cables, intelligence reports, and historical archives. Ask me anything about the provided historical archives.
 `, 'welcome')}
                       </div>
-                      <div className="mt-4">
-                        <h5 className="font-mono text-[#E0E0E0] mb-2 text-left text-xs">TRY AN EXAMPLE QUERY:</h5>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div className="mt-6">
+                        <h5 className="font-mono text-gray-500 mb-3 text-left text-xs tracking-wider">TRY AN EXAMPLE QUERY:</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <button
                             onClick={() => {
                               handleAgentInputChange({ target: { value: "What did the CIA know about the Iranian Revolution before it happened?" } } as React.ChangeEvent<HTMLTextAreaElement>);
@@ -659,14 +654,14 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                 }
                               }, 100);
                             }}
-                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                            className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
-                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
-                              <span className="text-base">🇮🇷</span> Iranian Revolution
+                            <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
+                              <span className="text-xl">🇮🇷</span> Iranian Revolution
                             </span>
                           </button>
                           <button
-                            onClick={() => {
+                             onClick={() => {
                               handleAgentInputChange({ target: { value: "How did policymakers view trade with China in the 1990s?" } } as React.ChangeEvent<HTMLTextAreaElement>);
                               setTimeout(() => {
                                 if (!isSubmitting && status !== "streaming" && status !== "error") {
@@ -677,14 +672,14 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                 }
                               }, 100);
                             }}
-                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                            className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
-                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
-                              <span className="text-base">🇨🇳</span> Trade with China
+                            <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
+                              <span className="text-xl">🇨🇳</span> Trade with China
                             </span>
                           </button>
                           <button
-                            onClick={() => {
+                             onClick={() => {
                               handleAgentInputChange({ target: { value: "What were internal reactions in the CIA to the civil rights movement in the 1960s" } } as React.ChangeEvent<HTMLTextAreaElement>);
                               setTimeout(() => {
                                 if (!isSubmitting && status !== "streaming" && status !== "error") {
@@ -695,14 +690,14 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                 }
                               }, 100);
                             }}
-                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                            className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
-                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
-                              <span className="text-base">✊</span> Civil Rights and the CIA
+                            <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
+                              <span className="text-xl">✊</span> Civil Rights and the CIA
                             </span>
                           </button>
                           <button
-                            onClick={() => {
+                             onClick={() => {
                               handleAgentInputChange({ target: { value: "What were the internal discussions in the us government related to the Soviet invasion of Afghanistan?" } } as React.ChangeEvent<HTMLTextAreaElement>);
                               setTimeout(() => {
                                 if (!isSubmitting && status !== "streaming" && status !== "error") {
@@ -713,10 +708,10 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                 }
                               }, 100);
                             }}
-                            className="text-left document-border bg-black/40 p-3 hover:bg-[#5cff5c]/20 hover:border-[#5cff5c]/50 transition-all duration-200 hover:scale-[1.02] cursor-pointer flex items-center gap-2 shadow-md hover:shadow-[#5cff5c]/20"
+                            className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
-                            <span className="text-[#5cff5c] text-sm font-mono flex items-center gap-2">
-                              <span className="text-base">🇷🇺</span> Soviet Union invades Afghanistan
+                            <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
+                              <span className="text-xl">🇷🇺</span> Soviet Union invades Afghanistan
                             </span>
                           </button>
                         </div>
@@ -727,15 +722,14 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                   <>
                     {agentMessages.map((m: Message, index) => {
                       const isUser = m.role === "user";
-                      const showAvatar =
-                        index === 0 || agentMessages[index - 1]?.role !== m.role;
+                      const showAvatar = index === 0 || agentMessages[index - 1]?.role !== m.role;
                       const showRole = showAvatar && !isUser;
                       const isLastMessage = index === agentMessages.length - 1;
-                      const shouldShowCopyButton = !isUser && (!isLastMessage || status === "ready");
+                      const shouldShowCopyButton = !isUser && (!isLastMessage || (isLastMessage && status === "ready"));
 
                       return (
                         <div
-                          className={`mb-4 flex flex-col ${
+                          className={`mb-5 flex flex-col p-1 ${
                             isUser ? "items-end" : "items-start"
                           }`}
                           key={m.id}
@@ -746,50 +740,55 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                             }`}
                           >
                             <div
-                              className={`rounded-sm flex flex-col ${
+                              className={`h-8 w-8 overflow-hidden border border-gray-300 bg-white flex-none rounded-full flex items-center justify-center shadow-sm ${
+                                isUser ? "order-last ml-2" : "order-first mr-2"
+                              }`}
+                            >
+                              {isUser ? (
+                                <User className="h-4 w-4 text-gray-500" />
+                              ) : (
+                                <Bot className="h-4 w-4 text-[#6CA0D6]" />
+                              )}
+                            </div>
+                            <div
+                              className={`rounded-lg flex flex-col border overflow-hidden shadow-sm ${
                                 isUser
-                                  ? "bg-secondary/30 backdrop-blur-sm document-border mr-2"
-                                  : "bg-black/40 backdrop-blur-sm document-border ml-2"
-                              } w-fit max-w-[86%]`}
+                                  ? "bg-gray-100 border-gray-200"
+                                  : "bg-white border-gray-200"
+                              } w-fit max-w-[calc(100%-3rem)]`}
                             >
                               <div
-                                className={`terminal-header justify-between ${
-                                  isUser ? "bg-secondary/50" : "bg-black"
+                                className={`px-3 py-1.5 font-mono text-xs border-b flex items-center justify-between ${
+                                  isUser ? "bg-gray-100 border-gray-200" : "bg-white border-gray-200"
                                 }`}
                               >
                                 <div className="flex items-center">
-                                  {isUser ? (
-                                    <CommandIcon className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
-                                  ) : (
-                                    <FileText className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
-                                  )}
-                                  <span className="font-mono text-xs tracking-widest text-[#E0E0E0]">
+                                  <span className={`font-semibold text-xs tracking-wide ${isUser ? 'text-gray-600' : 'text-[#6CA0D6]'}`}>
                                     {isUser ? "RESEARCHER" : "ASSISTANT"}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <time
                                     dateTime={m.createdAt?.toString() ?? new Date().toString()}
-                                    className="text-[10px] text-[#E0E0E0] font-mono"
+                                    className="text-[10px] text-gray-400 font-mono"
                                   >
                                     {formatTime(new Date(m.createdAt ?? new Date()))}
                                   </time>
                                   {!isUser && (
-                                    <div className="font-mono bg-black/50 text-[10px] px-1 text-[#E0E0E0] border border-[#5cff5c]/20">
+                                    <div className="font-mono bg-gray-100 text-[9px] px-1 text-gray-500 border border-gray-200 rounded-sm">
                                       HISTORYLAB
                                     </div>
                                   )}
                                 </div>
                               </div>
-                              <div className="px-4 py-3 text-sm text-[#5cff5c] font-mono">
+                              <div className="px-4 py-3 text-sm text-gray-800 font-sans">
                                 {!m.parts || m.parts.length === 0 ? (
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[#5cff5c]/70 text-xs">Processing query...</span>
+                                    <span className="text-gray-500 text-xs italic">Processing query...</span>
                                   </div>
                                 ) : (
                                   <>
-                                    {m.parts.map((part, i) => {                                    
-                                      // Render text parts as message bubbles
+                                    {m.parts.map((part, i) => {
                                       if (part.type === "text") {
                                         return (
                                           <div key={i} className="relative">
@@ -798,7 +797,6 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                         );
                                       }
                                       
-                                      // Render reasoning parts with grayed out styling
                                       if (part.type === "reasoning") {
                                         return (
                                           <div key={i} className="relative">
@@ -807,7 +805,6 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                         );
                                       }
                                       
-                                      // Render tool invocation parts
                                       if (part.type === "tool-invocation") {
                                         return renderToolInvocation(part.toolInvocation, m.id, i);
                                       }                                    
@@ -815,72 +812,53 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                       return null;
                                     })}
                                     
-                                    {/* Show copy button based on message position and status */}
                                     {shouldShowCopyButton && renderCopyButton(m)}
                                   </>
                                 )}
                               </div>
-                            </div>
-                            <div
-                              className={`h-8 w-8 overflow-hidden document-border flex-none ${
-                                isUser ? "order-last ml-2" : "order-first mr-2"
-                              }`}
-                            >
-                              {isUser ? (
-                                <div className="h-full w-full bg-secondary/30 flex items-center justify-center">
-                                  <CommandIcon className="h-4 w-4 text-[#E0E0E0]" />
-                                </div>
-                              ) : (
-                                <div className="h-full w-full bg-black/40 flex items-center justify-center">
-                                  <FileText className="h-4 w-4 text-[#E0E0E0]" />
-                                </div>
-                              )}
                             </div>
                           </div>
                         </div>
                       );
                     })}
                     
-                    {/* Limbo state message */}
                     {isLimbo && (
-                      <div className="mb-4 flex flex-col items-start">
+                      <div className="mb-4 flex flex-col items-start p-1">
                         <div className="flex w-full max-w-4xl justify-start">
-                          <div className="h-8 w-8 overflow-hidden document-border flex-none order-first mr-2">
-                            <div className="h-full w-full bg-yellow-900/80 flex items-center justify-center">
-                              <AlertTriangle className="h-4 w-4 text-[#E0E0E0]" />
-                            </div>
+                          <div className="h-8 w-8 overflow-hidden border border-amber-400 bg-white flex-none order-first mr-2 rounded-full flex items-center justify-center shadow-sm">
+                            <AlertTriangle className="h-4 w-4 text-amber-500" />
                           </div>
-                          <div className="rounded-sm flex flex-col bg-yellow-900/40 backdrop-blur-sm border border-yellow-500/50 ml-2 w-fit max-w-[86%]">
-                            <div className="terminal-header justify-between bg-yellow-950">
+                          <div className="rounded-lg flex flex-col bg-amber-50 border border-amber-300 overflow-hidden w-fit max-w-[calc(100%-3rem)] shadow-sm">
+                            <div className="px-3 py-1.5 font-mono text-xs border-b border-amber-300 flex items-center justify-between bg-amber-50">
                               <div className="flex items-center">
-                                <AlertTriangle className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
-                                <span className="font-mono text-xs tracking-widest text-[#E0E0E0]">
+                                <AlertTriangle className="h-3.5 w-3.5 mr-1.5 text-amber-600" />
+                                <span className="font-semibold text-xs tracking-wide text-amber-700">
                                   WARNING
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <time
                                   dateTime={new Date().toString()}
-                                  className="text-[10px] text-[#E0E0E0] font-mono"
+                                  className="text-[10px] text-amber-500 font-mono"
                                 >
                                   {formatTime(new Date())}
                                 </time>
-                                <div className="font-mono bg-yellow-950/80 text-[10px] px-1 text-[#E0E0E0] border border-yellow-500/50">
+                                <div className="font-mono bg-amber-100 text-[9px] px-1 text-amber-600 border border-amber-200 rounded-sm">
                                   SYSTEM
                                 </div>
                               </div>
                             </div>
-                            <div className="px-4 py-3 text-sm text-yellow-300 font-mono">
+                            <div className="px-4 py-3 text-sm text-amber-800 font-sans">
                               <div className="whitespace-pre-wrap break-words">
-                                <p className="text-yellow-300 mb-2">
+                                <p className="mb-2">
                                   Something went wrong. Please reload the page.
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   <button
                                     onClick={handleReload}
-                                    className="inline-flex h-9 items-center justify-center border border-yellow-500/50 bg-yellow-950/70 text-sm font-medium transition-colors hover:bg-yellow-800/40 focus-visible:outline-none px-3 text-[#E0E0E0] text-xs"
+                                    className="inline-flex h-8 items-center justify-center border border-amber-400 bg-amber-100 text-sm font-medium transition-colors hover:bg-amber-200 focus-visible:outline-none px-3 text-amber-800 text-xs rounded-md"
                                   >
-                                    <RefreshCw className="h-4 w-4 icon-visible mr-1" />
+                                    <RefreshCw className="h-3.5 w-3.5 icon-visible mr-1" />
                                     <span>RELOAD PAGE</span>
                                   </button>
                                 </div>
@@ -891,50 +869,46 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                       </div>
                     )}
                     
-                    {/* Error message that appears when status is "error" */}
                     {status === "error" && (
-                      <div className="mb-4 flex flex-col items-start">
+                      <div className="mb-4 flex flex-col items-start p-1">
                         <div className="flex w-full max-w-4xl justify-start">
-                          <div className="h-8 w-8 overflow-hidden document-border flex-none order-first mr-2">
-                            <div className="h-full w-full bg-red-900/80 flex items-center justify-center">
-                              <FileText className="h-4 w-4 text-[#E0E0E0]" />
-                            </div>
+                           <div className="h-8 w-8 overflow-hidden border border-red-400 bg-white flex-none order-first mr-2 rounded-full flex items-center justify-center shadow-sm">
+                             <Bot className="h-4 w-4 text-red-500" />
                           </div>
-                          <div className="rounded-sm flex flex-col bg-red-900/40 backdrop-blur-sm border border-red-500/50 ml-2 w-fit max-w-[86%]">
-                            <div className="terminal-header justify-between bg-red-950">
+                          <div className="rounded-lg flex flex-col bg-red-50 border border-red-300 overflow-hidden w-fit max-w-[calc(100%-3rem)] shadow-sm">
+                            <div className="px-3 py-1.5 font-mono text-xs border-b border-red-300 flex items-center justify-between bg-red-50">
                               <div className="flex items-center">
-                                <FileText className="h-3 w-3 mr-1.5 text-[#E0E0E0]" />
-                                <span className="font-mono text-xs tracking-widest text-[#E0E0E0]">
+                                <Bot className="h-3.5 w-3.5 mr-1.5 text-red-600" />
+                                <span className="font-semibold text-xs tracking-wide text-red-700">
                                   ERROR
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <time
                                   dateTime={new Date().toString()}
-                                  className="text-[10px] text-[#E0E0E0] font-mono"
+                                  className="text-[10px] text-red-500 font-mono"
                                 >
                                   {formatTime(new Date())}
                                 </time>
-                                <div className="font-mono bg-red-950/80 text-[10px] px-1 text-[#E0E0E0] border border-red-500/50">
+                                <div className="font-mono bg-red-100 text-[9px] px-1 text-red-600 border border-red-200 rounded-sm">
                                   SYSTEM
                                 </div>
                               </div>
                             </div>
-                            <div className="px-4 py-3 text-sm text-red-300 font-mono">
+                            <div className="px-4 py-3 text-sm text-red-800 font-sans">
                               <div className="whitespace-pre-wrap break-words">
-                                <p className="text-red-300 mb-2">
+                                <p className="mb-2">
                                   There was an error processing your request. This conversation may have encountered a technical issue.
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   <a
                                     href={window.location.pathname}
-                                    target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex h-9 items-center justify-center border border-red-500/50 bg-red-950/70 text-sm font-medium ring-offset-background transition-colors hover:bg-red-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 px-3 text-[#E0E0E0] text-xs"
+                                    className="inline-flex h-8 items-center justify-center border border-red-400 bg-red-100 text-sm font-medium transition-colors hover:bg-red-200 focus-visible:outline-none px-3 text-red-800 text-xs rounded-md"
                                   >
-                                    <ExternalLink className="h-4 w-4 icon-visible mr-1" />
+                                    <ExternalLink className="h-3.5 w-3.5 icon-visible mr-1" />
                                     <span>START NEW CONVERSATION</span>
-                                  </a>                                  
+                                  </a>
                                 </div>
                               </div>
                             </div>
@@ -947,8 +921,7 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
               </div>
             </div>
             
-            {/* Input interface */}
-            <div className="bg-black/60 backdrop-blur-md sticky bottom-0 border-t border-white/10 py-2">
+            <div className="bg-white backdrop-blur-md sticky bottom-0 border-t border-gray-200 py-3">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -958,14 +931,11 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                 }}
                 className="mx-4"
               >
-                <div className="relative flex-1">
-                  <div className="absolute inset-y-0 left-0 flex items-start pl-3 pt-2 pointer-events-none">
-                    <span className="font-mono text-xs text-[#E0E0E0]/80">SEARCH ARCHIVES:</span>
-                  </div>
+                <div className="relative flex-1 rounded-lg bg-white transition-all duration-200 ease-in-out focus-within:ring-2 focus-within:ring-[#6CA0D6]/30 shadow-sm overflow-hidden">
                   <textarea
                     ref={textareaRef}
                     placeholder="Enter your research query..."
-                    className={`document-border w-full bg-black/30 backdrop-blur-md py-2 px-4 text-[#E0E0E0] shadow-sm font-mono text-sm placeholder:text-[#E0E0E0]/50 focus:outline-none focus:ring-1 focus:ring-[#5cff5c]/50 resize-none pr-12 pb-12`}
+                    className="w-full bg-white py-2.5 px-4 text-gray-800 border-none font-sans text-sm placeholder:text-gray-400 focus:outline-none resize-none pr-12 pb-12 custom-scrollbar"
                     value={agentInput}
                     onChange={handleAgentInputChange}
                     onKeyDown={(e) => {
@@ -978,13 +948,13 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                     }}
                     rows={1}
                     maxLength={60000}
-                    style={{ 
-                      height: "40px", 
-                      minHeight: "40px", 
-                      maxHeight: "200px", 
+                    style={{
+                      height: "44px",
+                      minHeight: "44px",
+                      maxHeight: "200px",
                       overflowY: "auto",
-                      ...(isAtMaxHeight 
-                        ? {} 
+                      ...(isAtMaxHeight
+                        ? {}
                         : {
                             msOverflowStyle: "none",
                             scrollbarWidth: "none",
@@ -992,17 +962,14 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                           }),
                     }}
                   />
-                  <div className="absolute top-2 right-0 flex items-center pr-3">
-                    <Mic className="h-4 w-4 text-[#E0E0E0]/70" />
-                  </div>
                   <button
                     type="submit"
-                    className={`document-border bg-black/70 text-[#E0E0E0] hover:bg-[#E0E0E0]/30 hover:text-white hover:border-white/50 hover:scale-105 rounded-full p-2 absolute bottom-3 right-3 flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-50 cursor-not-allowed" : ""}`}
+                    className="border border-[#6CA0D6] bg-[#6CA0D6] text-white hover:bg-[#5a90c0] rounded-md p-2 absolute bottom-2.5 right-2.5 flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer disabled:opacity-50 disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
                     disabled={isSubmitting || status === "streaming" || status === "error"}
                   >
-                    <div className="relative w-6 h-6 flex items-center justify-center">
-                      <Send className={`h-6 w-6 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-0 scale-0" : "opacity-100 scale-100"}`} />
-                      <Square className={`h-5 w-5 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-100 scale-100" : "opacity-0 scale-0"}`} />
+                    <div className="relative w-5 h-5 flex items-center justify-center">
+                      <Send className={`h-5 w-5 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-0 scale-0" : "opacity-100 scale-100"}`} />
+                      <Square className={`h-4 w-4 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-100 scale-100" : "opacity-0 scale-0"} text-white`} />
                     </div>
                     <span className="sr-only">{(isSubmitting || status === "streaming" || status === "error") ? "Processing" : "Send"}</span>
                   </button>
@@ -1012,13 +979,50 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
           </div>
         </div>
       </div>
-      <footer className="bg-black/80 backdrop-blur-md border-t border-white/10 py-2 text-center">
+      <footer className="bg-white border-t border-gray-200 py-3 text-center text-gray-800 mt-4">
         <div className="container mx-auto px-4">
-          <p className="text-[#E0E0E0] text-xs font-mono">
-            Built on the <a href="https://landing.ramus.network" target="_blank" rel="noopener noreferrer" className="text-[#5cff5c] hover:underline cursor-pointer">Ramus Network</a>
+          <p className="text-gray-500 text-xs font-mono flex items-center justify-center gap-1">            
+            <a 
+              href="https://landing.ramus.network" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="inline-flex items-center gap-1.5 text-[#6CA0D6] font-medium hover:underline cursor-pointer transition-colors"
+            >              
+              <span className="font-sans">Built on the Ramus Network</span>
+              <img 
+                src="/logo.png" 
+                alt="Ramus Logo" 
+                className="h-3.5 w-auto object-contain" 
+              />
+            </a>
           </p>
         </div>
       </footer>
     </div>
   );
 }
+
+const style = document.createElement('style');
+style.textContent = `
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+  }
+  /* For Firefox */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #ccc #f1f1f1;
+  }
+`;
+document.head.appendChild(style);
