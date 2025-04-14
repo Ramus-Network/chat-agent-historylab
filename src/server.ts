@@ -22,7 +22,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { logDebug, logInfo } from "./shared";
+import { logDebug, logInfo, logError } from "./shared";
 
 // Environment variables type definition
 export type Env = {
@@ -91,7 +91,7 @@ function decodeHashedComponents(hash: string): { userId: string, collectionId: s
     
     return { userId, collectionId, convoId };
   } catch (e) {
-    logInfo("decodeHashedComponents", "Failed to decode hash", { hash, error: e });
+    logError("decodeHashedComponents", "Failed to decode hash", e, { hash });
     // Return fallback values if decoding fails
     return { 
       userId: 'unknown', 
@@ -137,8 +137,9 @@ export class Chat extends AIChatAgent<Env> {
         logInfo("Chat.initConversationLog", "Retrieved existing conversation log", { conversationId });
         return existingLog as ConversationLog;
       }
-    } catch (error) {
-      logInfo("Chat.initConversationLog", "Error retrieving conversation log", { error, conversationId });
+    } catch (kvError) {
+      logError("Chat.initConversationLog", "Error retrieving conversation log from KV", kvError, { conversationId });
+      // Proceed to create a new log if retrieval fails
     }
     
     // Create a new conversation log
@@ -168,8 +169,13 @@ export class Chat extends AIChatAgent<Env> {
     };
     
     // Store the new log
-    await this.env.CONVERSATION_LOGS.put(conversationId, JSON.stringify(newLog));
-    logInfo("Chat.initConversationLog", "Created new conversation log", { conversationId });
+    try {
+      await this.env.CONVERSATION_LOGS.put(conversationId, JSON.stringify(newLog));
+      logInfo("Chat.initConversationLog", "Created new conversation log", { conversationId });
+    } catch (kvError) {
+      logError("Chat.initConversationLog", "Error saving new conversation log to KV", kvError, { conversationId });
+      // If saving fails, the log will be null, which might affect subsequent updates, but we proceed
+    }
     
     return newLog;
   }
@@ -191,12 +197,12 @@ export class Chat extends AIChatAgent<Env> {
     };
     
     // Store the updated log
-    await this.env.CONVERSATION_LOGS.put(this.conversationLog.id, JSON.stringify(this.conversationLog));
-    logInfo("Chat.updateConversationLog", "Updated conversation log", { 
-      id: this.conversationLog.id,
-      messageCount: this.conversationLog.messageCount,
-      toolCalls: this.conversationLog.toolCalls
-    });
+    try {
+      await this.env.CONVERSATION_LOGS.put(this.conversationLog.id, JSON.stringify(this.conversationLog));
+      logDebug("Chat.updateConversationLog", "Updated conversation log", { id: this.conversationLog.id }); // Log update as debug
+    } catch (kvError) {
+      logError("Chat.updateConversationLog", "Error saving updated conversation log to KV", kvError, { id: this.conversationLog.id });
+    }
   }
 
   /**
@@ -286,7 +292,8 @@ export class Chat extends AIChatAgent<Env> {
             model = openai(model_name);
           }
 
-          // Stream the AI response using GPT-4o
+          logDebug("Chat.onChatMessage", "Starting AI stream");
+          // Stream the AI response using the model initialized within this scope
           const result = streamText({
             model: model as LanguageModelV1,
             system: `
@@ -373,12 +380,13 @@ export class Chat extends AIChatAgent<Env> {
               - When you can't find information, explicitly state this and explain what you did find instead.
               - Make sure to cite your sources. Provide a link to the document using the following format: [View Document](https://doc-viewer.ramus.network/{file_key}) (e.g. https://doc-viewer.ramus.network/0000000001/80650a98-fe49-429a-afbd-9dde66e2d02b/153b14a1-1e61-406d-a6fc-082fca798d15/1979STATE298311_unknown.txt)
 
+              If there are persistent errors occurring with the query tool, first file a feedback report and then prompt the user to start a new conversation by linking to the following URL: [Start a new conversation](https://history-lab.ramus.network/)
+
               IMPORTANT INFO:
               - collectionId is always "${COLLECTION_ID}"
               `,
             messages: processedMessages,
             tools,
-            // onFinish,
             onFinish: async (event) => {
               // First, call the original onFinish callback if it exists
               if (onFinish) {
@@ -460,17 +468,9 @@ export class Chat extends AIChatAgent<Env> {
                 });
               }
               
-              logInfo("Chat.onChatMessage.onFinish", "Conversation stats", {
-                toolCallCount: totalToolCalls,
-                totalSteps: event.steps.length,
-                toolCallsByType,
-                messageCount: this.messages.length,
-                inputChars: userInputChars,
-                outputChars: assistantOutputChars
-              });
-
-              logDebug("Chat.onChatMessage.onFinish", "Completed messages", {
-                messages: this.messages
+              // Log minimal completion info as debug
+              logDebug("Chat.onChatMessage.onFinish", "Stream finished", { 
+                userId, convoId, totalToolCalls, totalSteps: event.steps.length 
               });
             },
             maxSteps: 10,

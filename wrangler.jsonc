@@ -4,9 +4,9 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	// Make sure this is history-lab-chat-agent-2 for deployment
+	// Make sure this is history-lab-chat-agent-3 for deployment
   // "name": "history-lab-chat-agent-2",
-  "name": "history-lab-chat-agent-3",
+  "name": "history-lab-chat-agent-2",
 	"main": "src/server.ts",
 	"compatibility_date": "2025-02-04",
 	"compatibility_flags": [
@@ -64,7 +64,7 @@
   //   "binding": "AI"    
   // }
   // ,
-  // this should be uncommented for deployment
+  // // this should be uncommented for deployment
   // "routes": [
   //   {
   //     "pattern": "history-lab.ramus.network",

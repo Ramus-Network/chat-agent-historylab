@@ -10,7 +10,7 @@ import {
   type ToolSet,
 } from "ai";
 import type { z } from "zod";
-import { APPROVAL, logDebug, logInfo } from "./shared";
+import { APPROVAL, logDebug, logInfo, logError } from "./shared";
 
 function isValidToolName<K extends PropertyKey, T extends object>(
   key: K,
@@ -98,7 +98,7 @@ export async function processToolCalls<
 
         const toolInstance = executions[toolName];
         if (toolInstance) {
-          logDebug("processToolCalls", `Executing tool ${toolName}`, { args: toolInvocation.args });
+          logInfo("processToolCalls", `Executing approved tool ${toolName}`, { args: toolInvocation.args });
           result = await toolInstance(toolInvocation.args, {
             messages: convertToCoreMessages(messages),
             toolCallId: toolInvocation.toolCallId,

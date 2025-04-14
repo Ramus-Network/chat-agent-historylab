@@ -32,3 +32,10 @@ export function logDebug(component: string, message: string, data?: any) {
 export function logInfo(component: string, message: string, data?: any) {
   console.log(`[INFO][${component}] ${message}`, data ? JSON.stringify(data) : '');
 }
+
+export function logError(component: string, message: string, error: any, data?: any) {
+  console.error(`[ERROR][${component}] ${message}`, { 
+    error: error instanceof Error ? { message: error.message, stack: error.stack } : error, 
+    data: data ? JSON.stringify(data) : undefined
+  });
+}

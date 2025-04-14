@@ -245,6 +245,11 @@ export default function Chat() {
 
   // Wrapper for handleAgentSubmit to set local submission state and start timeout
   const handleSubmit = (e: React.FormEvent) => {
+    // Prevent submission if input is blank
+    if (!agentInput.trim()) {
+      return;
+    }
+
     setIsSubmitting(true);
     
     // Start timeout to detect limbo state
@@ -403,27 +408,27 @@ export default function Chat() {
           rehypePlugins={[rehypeRaw]}
           remarkPlugins={[remarkGfm]}
           components={{
-            h1: ({node, ...props}) => <h1 className="text-gray-900 font-bold text-xl mb-2 mt-3" {...props} />,
-            h2: ({node, ...props}) => <h2 className="text-gray-900 font-bold text-lg mb-2 mt-3" {...props} />,
-            h3: ({node, ...props}) => <h3 className="text-gray-900 font-bold text-base mb-1 mt-2" {...props} />,
-            h4: ({node, ...props}) => <h4 className="text-gray-900 font-bold text-sm mb-1 mt-2" {...props} />,
-            p: ({node, ...props}) => <p className="text-gray-800 mb-2" {...props} />,
+            h1: ({node, ...props}) => <h1 className="text-gray-900 font-bold text-xl mb-1 mt-2" {...props} />,
+            h2: ({node, ...props}) => <h2 className="text-gray-900 font-bold text-lg mb-1 mt-2" {...props} />,
+            h3: ({node, ...props}) => <h3 className="text-gray-900 font-bold text-base mb-1 mt-1" {...props} />,
+            h4: ({node, ...props}) => <h4 className="text-gray-900 font-bold text-sm mb-1 mt-1" {...props} />,
+            p: ({node, ...props}) => <p className="text-gray-800 mb-0" {...props} />,
             a: ({node, ...props}) => <a className="text-[#6CA0D6] hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
             strong: ({node, ...props}) => <strong className="text-gray-900 font-semibold" {...props} />,
             em: ({node, ...props}) => <em className="text-gray-800 italic" {...props} />,
-            ul: ({node, ...props}) => <ul className="text-gray-800 list-disc ml-5 mb-2" {...props} />,
-            ol: ({node, ...props}) => <ol className="text-gray-800 list-decimal ml-5 mb-2" {...props} />,
-            li: ({node, ...props}) => <li className="text-gray-800 mb-1" {...props} />,
-            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-[#6CA0D6] bg-gray-100/50 p-3 my-3 rounded-r-md text-gray-700 italic" {...props} />,
+            ul: ({node, ...props}) => <ul className="text-gray-800 list-disc ml-5 my-0 py-0" {...props} />,
+            ol: ({node, ...props}) => <ol className="text-gray-800 list-decimal ml-5 my-0 py-0" {...props} />,
+            li: ({node, ...props}) => <li className="text-gray-800 mb-0" {...props} />,
+            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-[#6CA0D6] bg-gray-100/50 p-3 my-1 rounded-r-md text-gray-700 italic" {...props} />,
             code: ({node, inline, className, ...props}: any) =>
               inline
                 ? <code className="bg-gray-200/70 rounded-md px-1 py-0.5 font-mono text-sm text-gray-800" {...props} />
-                : <pre className="bg-gray-100 border border-gray-200 rounded-md p-4 my-3 overflow-x-auto font-mono text-sm leading-relaxed text-gray-800 block"><code className="bg-transparent p-0 border-none" {...props}/></pre>,
-            pre: ({node, ...props}) => <pre className="bg-gray-100 border border-gray-200 rounded-md p-4 my-3 overflow-x-auto font-mono text-sm leading-relaxed text-gray-800" {...props} />,
-            table: ({node, ...props}) => <table className="table-auto w-full my-3 border-collapse border border-gray-300 rounded-md overflow-hidden text-gray-800" {...props} />,
+                : <pre className="bg-gray-100 border border-gray-200 rounded-md p-4 my-1 overflow-x-auto font-mono text-sm leading-relaxed text-gray-800 block"><code className="bg-transparent p-0 border-none" {...props}/></pre>,
+            pre: ({node, ...props}) => <pre className="bg-gray-100 border border-gray-200 rounded-md p-4 my-1 overflow-x-auto font-mono text-sm leading-relaxed text-gray-800" {...props} />,
+            table: ({node, ...props}) => <table className="table-auto w-full my-1 border-collapse border border-gray-300 rounded-md overflow-hidden text-gray-800" {...props} />,
             th: ({node, ...props}) => <th className="border border-gray-300 p-2 text-left bg-gray-100 font-semibold" {...props} />,
             td: ({node, ...props}) => <td className="border border-gray-300 p-2" {...props} />,
-            hr: ({node, ...props}) => <hr className="border-gray-300/80 my-3" {...props} />,
+            hr: ({node, ...props}) => <hr className="border-gray-300/80 my-1" {...props} />,
           }}
         >
           {text}
@@ -560,8 +565,16 @@ export default function Chat() {
             <div className="font-mono text-xs mb-1 mt-2">
               <div className="font-semibold text-blue-800">Result:</div>
               <div className="pl-2 text-[10px]">
-                {/* Custom display for submitFeedback result */} 
-                {toolInvocation.toolName === 'submitFeedback' && typeof toolInvocation.result === 'object' && toolInvocation.result !== null ? (
+                {/* Custom display for error status */}
+                {typeof toolInvocation.result === 'object' && toolInvocation.result !== null && toolInvocation.result.status === 'error' ? (
+                  <div className="bg-red-50 border border-red-300 rounded p-2 mt-1 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+                    <span className="text-red-700 text-xs font-medium break-all">
+                      {toolInvocation.result.message || toolInvocation.result.error || "An unspecified tool error occurred."}
+                    </span>
+                  </div>
+                /* Custom display for submitFeedback result */
+                ) : toolInvocation.toolName === 'submitFeedback' && typeof toolInvocation.result === 'object' && toolInvocation.result !== null ? (
                   // Handle specific rejection status first
                   toolInvocation.result.status === 'rejected_by_user' ? (
                     <div className="flex items-center gap-1.5 text-orange-700 text-xs font-medium mt-1">
@@ -728,15 +741,13 @@ export default function Chat() {
                     <LinkIcon className="h-3.5 w-3.5 icon-visible mr-1 text-gray-500" />
                     <span>{urlCopied ? "COPIED!" : "COPY URL"}</span>
                   </button>
-                  <a
-                    href={window.location.pathname}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                    className="inline-flex h-8 items-center justify-center rounded-md border border-gray-300 bg-white text-xs font-medium ring-offset-white transition-colors transition-transform hover:scale-105 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6CA0D6]/50 focus-visible:ring-offset-1 px-2 text-gray-700 cursor-pointer"
+                  <button
+                    onClick={() => window.open(window.location.pathname, '_blank', 'noopener,noreferrer')}
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-gray-300 bg-white text-xs font-medium ring-offset-white transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6CA0D6]/50 focus-visible:ring-offset-1 px-2 text-gray-700 cursor-pointer"
                   >
                     <ExternalLink className="h-3.5 w-3.5 icon-visible mr-1 text-gray-500" />
                     <span>NEW CONV</span>
-                  </a>
+                  </button>
                   <button
                     onClick={clearHistory}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-sm font-medium ring-offset-white transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6CA0D6]/50 focus-visible:ring-offset-1 cursor-pointer"
@@ -784,12 +795,12 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                             className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
                             <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
-                              <span className="text-xl">🇮🇷</span> Iranian Revolution
+                              <span className="text-xl">🇮🇷 🕵️  🗃️</span> CIA and the Iranian Revolution
                             </span>
                           </button>
                           <button
                              onClick={() => {
-                              handleAgentInputChange({ target: { value: "How did policymakers view trade with China in the 1990s?" } } as React.ChangeEvent<HTMLTextAreaElement>);
+                              handleAgentInputChange({ target: { value: "What were the key debates and policy considerations around China's admission to the WTO, and how did the U.S. justify supporting its entry?" } } as React.ChangeEvent<HTMLTextAreaElement>);
                               setTimeout(() => {
                                 if (!isSubmitting && status !== "streaming" && status !== "error") {
                                   const form = document.querySelector('form');
@@ -802,12 +813,12 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                             className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
                             <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
-                              <span className="text-xl">🇨🇳</span> Trade with China
+                              <span className="text-xl">🌐 💼 🇨🇳</span> China WTO Entry
                             </span>
                           </button>
                           <button
                              onClick={() => {
-                              handleAgentInputChange({ target: { value: "What were internal reactions in the CIA to the civil rights movement in the 1960s" } } as React.ChangeEvent<HTMLTextAreaElement>);
+                              handleAgentInputChange({ target: { value: "I want to know what Clinton emails pertain to Benghazi and what they were talking about as it was unfolding. Make sure to tell me who each email was from and who it was to if that information is available." } } as React.ChangeEvent<HTMLTextAreaElement>);
                               setTimeout(() => {
                                 if (!isSubmitting && status !== "streaming" && status !== "error") {
                                   const form = document.querySelector('form');
@@ -820,12 +831,12 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                             className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
                             <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
-                              <span className="text-xl">✊</span> Civil Rights and the CIA
+                              <span className="text-xl">🇱🇾 📧 🧨</span> Clinton Benghazi Emails
                             </span>
                           </button>
                           <button
                              onClick={() => {
-                              handleAgentInputChange({ target: { value: "What were the internal discussions in the us government related to the Soviet invasion of Afghanistan?" } } as React.ChangeEvent<HTMLTextAreaElement>);
+                              handleAgentInputChange({ target: { value: "How did early Vietnam debates inside Eisenhower's cabinet shape America's path to war?" } } as React.ChangeEvent<HTMLTextAreaElement>);
                               setTimeout(() => {
                                 if (!isSubmitting && status !== "streaming" && status !== "error") {
                                   const form = document.querySelector('form');
@@ -838,7 +849,7 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                             className="text-left border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm cursor-pointer flex items-center gap-2 rounded-md"
                           >
                             <span className="text-gray-700 text-sm font-sans flex items-center gap-2">
-                              <span className="text-xl">🇷🇺</span> Soviet Union invades Afghanistan
+                              <span className="text-xl">🇻🇳 🕴️ 📜</span> Eisenhower Vietnam Policy
                             </span>
                           </button>
                         </div>
@@ -1028,14 +1039,13 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                   There was an error processing your request. This conversation may have encountered a technical issue.
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                  <a
-                                    href={window.location.pathname}
-                                    rel="noopener noreferrer"
+                                  <button
+                                    onClick={() => window.open(window.location.pathname, '_blank', 'noopener,noreferrer')}
                                     className="inline-flex h-8 items-center justify-center border border-red-400 bg-red-100 text-sm font-medium transition-colors hover:bg-red-200 focus-visible:outline-none px-3 text-red-800 text-xs rounded-md"
                                   >
                                     <ExternalLink className="h-3.5 w-3.5 icon-visible mr-1" />
                                     <span>START NEW CONVERSATION</span>
-                                  </a>
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -1068,7 +1078,8 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        if (!isSubmitting && status !== "streaming" && status !== "error") {
+                        // Check if input is blank before submitting
+                        if (!isSubmitting && status !== "streaming" && status !== "error" && agentInput.trim()) {
                           handleSubmit(e as unknown as React.FormEvent);
                         }
                       }
@@ -1092,7 +1103,7 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                   <button
                     type="submit"
                     className="border border-[#6CA0D6] bg-[#6CA0D6] text-white hover:bg-[#5a90c0] rounded-md p-2 absolute bottom-2.5 right-2.5 flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer disabled:opacity-50 disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
-                    disabled={isSubmitting || status === "streaming" || status === "error"}
+                    disabled={isSubmitting || status === "streaming" || status === "error" || !agentInput.trim()}
                   >
                     <div className="relative w-5 h-5 flex items-center justify-center">
                       <Send className={`h-5 w-5 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-0 scale-0" : "opacity-100 scale-100"}`} />

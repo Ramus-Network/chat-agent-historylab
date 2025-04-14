@@ -8,7 +8,7 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import { agentContext, type Env } from "./server";
-import { logDebug, logInfo } from "./shared"; 
+import { logDebug, logInfo, logError } from "./shared"; 
 
 function getAgent() {
   const agent = agentContext.getStore();
@@ -54,6 +54,7 @@ const getDocumentText = tool({
       return text;
     } catch (error) {
       logDebug("getDocumentText", `Error getting document text: ${error}`);
+      logError("getDocumentText", "Error getting document text", error);
       return { error: "Failed to get document text" };
     }
   },
@@ -104,6 +105,8 @@ const queryCollection = tool({
     try {
       const agent = getAgent();
       const vectorizeSearch = agent.getVectorizeSearch();
+
+      const k = 10;
       
       // Build filters for the search
       const filters: Record<string, any> = {};
@@ -142,7 +145,7 @@ const queryCollection = tool({
       const request = {
         queries: query,
         collection_id: finalCollectionId,
-        topK: 10,
+        topK: k,
         filters: Object.keys(filters).length > 0 ? filters : undefined
       };
       
@@ -153,6 +156,11 @@ const queryCollection = tool({
         request.topK,
         request.filters
       );
+
+      // Check for error
+      if (results?.error) {
+        logError("queryCollection", `Error querying collection`, results.error, { query, doc_id, authored_start, authored_end });        
+      }                
       
       // Log the number of results returned
       logInfo("queryCollection", `Search returned ${results?.matches?.length || 0} results`);
@@ -161,7 +169,8 @@ const queryCollection = tool({
       logDebug("queryCollection", `Results: ${JSON.stringify(results)}`);
       return results;
     } catch (error) {
-      logDebug("queryCollection", `Error querying collection: ${error}`);
+      // logDebug("queryCollection", `Error querying collection: ${error}`);
+      logError("queryCollection", "Error querying collection", error, { query, doc_id, authored_start, authored_end });
       return { error: "Failed to query collection" };
     }
   },
@@ -239,6 +248,7 @@ function filterConversationForFeedback(messages: any[]) {
              return { ...invocation, result: truncatedResult };
            } catch (error) {
              logDebug("filterConversationForFeedback", `Error truncating tool result for ${invocation.toolName}: ${error}`, { invocation });
+             logError("filterConversationForFeedback", `Error truncating tool result for ${invocation.toolName}`, error, { invocation });
              // Fallback: Replace the entire result if truncation fails unexpectedly
              return { ...invocation, result: { error: "Failed to truncate tool result content." } };
            }
@@ -285,8 +295,8 @@ export const executions = {
         if (decoded.length === 3) {
           [userId, collectionId, convoId] = decoded;
         }
-      } catch (e) {
-        logDebug("SubmitFeedback", "Failed to decode agent name for IDs, using defaults.", { agentName });
+      } catch (error) {
+        logError("SubmitFeedback", "Failed to decode agent name for IDs, using defaults.", error, { agentName });
       }
 
       // Generate a unique report ID
@@ -309,7 +319,7 @@ export const executions = {
       return { success: true, reportId: reportId, message: "Thank you for your feedback. A report has been submitted." };
 
     } catch (error) {
-      logDebug("SubmitFeedback", `Error submitting feedback: ${error}`);
+      logError("SubmitFeedback", "Error submitting feedback", error, { description });
       return { success: false, error: "Failed to submit feedback due to an internal error." };
     }
   },
