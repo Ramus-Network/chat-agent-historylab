@@ -763,7 +763,7 @@ export default function Chat() {
       </header>
       <div className="flex-1 overflow-hidden">
         <div className="mx-auto max-w-6xl mt-4 mb-0 flex-1 overflow-hidden px-4 lg:px-8 py-0 bg-white border border-gray-200 rounded-lg shadow-sm">
-          <div className="flex flex-col h-[calc(100vh-7.5rem)] overflow-hidden">
+          <div className="flex flex-col">
             <div className="flex-1 overflow-y-auto mt-2 pr-2 custom-scrollbar" ref={scrollContainerRef}>
               <div className="pb-[40px]">
                 {agentMessages.length === 0 ? (
