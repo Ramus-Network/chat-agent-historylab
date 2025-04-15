@@ -165,8 +165,8 @@ export default function Chat() {
 
   // Function to scroll the message container to the bottom
   const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, []);
 
@@ -369,8 +369,11 @@ export default function Chat() {
   // Scroll to bottom when a new message is added
   useEffect(() => {
     if (agentMessages.length > 0) {
-      // Scroll when the number of messages increases (new message added)
-      scrollToBottom();
+      // Use a timeout to ensure the DOM has updated before scrolling
+      const timer = setTimeout(() => {
+        scrollToBottom();
+      }, 50); // Small delay (e.g., 50ms)
+      return () => clearTimeout(timer); // Cleanup timeout
     }
   }, [agentMessages.length, scrollToBottom]);
 
@@ -378,10 +381,11 @@ export default function Chat() {
   const lastMessageContent = useMemo(() => {
     const lastMessage = agentMessages[agentMessages.length - 1];
     if (!lastMessage || !lastMessage.parts) return '';
-    return lastMessage.parts
+    const content = lastMessage.parts
       .filter(part => part.type === 'text')
       .map(part => (part.type === 'text' ? part.text : ''))
       .join('');
+    return content;
   }, [agentMessages]);
 
   // Auto-scroll during streaming
@@ -390,7 +394,7 @@ export default function Chat() {
       // Use a small timeout to allow the DOM to update after new text arrives
       const timer = setTimeout(() => {
         scrollToBottom();
-      }, 50); // 50ms delay
+      }, 100); // Increased delay to 100ms
       return () => clearTimeout(timer); // Cleanup timeout on effect re-run or unmount
     }
   }, [status, lastMessageContent, scrollToBottom]); // Trigger on status change or last message content change
@@ -768,15 +772,15 @@ export default function Chat() {
               <div className="pb-[40px]">
                 {agentMessages.length === 0 ? (
                   <div className="bg-white p-4 m-4 mt-8 rounded-lg border border-gray-200">
-                    <div className="rounded-md border border-gray-200 p-6 bg-white">
-                      <h4 className="font-serif text-gray-800 mb-3 text-left text-lg">HISTORY LAB RESEARCH ASSISTANT</h4>
+                    {/* <div className="rounded-md border border-gray-200 p-6 bg-white"> */}
+                      {/* <h4 className="font-serif text-gray-800 mb-3 text-left text-lg">HISTORY LAB RESEARCH ASSISTANT</h4> */}
                       <div className="markdown-condensed text-[#6CA0D6] text-sm text-left mb-4 font-sans">
                         {renderMessageContent(`
 # Welcome to HistoryLab AI
 
 An AI assistant for exploring declassified government documents, diplomatic cables, intelligence reports, and historical archives. Ask me anything about the provided historical archives.
 `, 'welcome')}
-                      </div>
+                      {/* </div> */}
                       <div className="mt-6">
                         <h5 className="font-mono text-gray-500 mb-3 text-left text-xs tracking-wider">TRY AN EXAMPLE QUERY:</h5>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1055,6 +1059,7 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                     )}
                   </>
                 )}
+                <div ref={messagesEndRef} style={{ height: '1px', width: '100%' }} />
               </div>
             </div>
             

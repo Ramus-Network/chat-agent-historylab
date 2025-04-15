@@ -84,7 +84,7 @@ const getDocumentText = tool({
  *   4. "Diplomatic negotiations communications Soviet Union Cuban Missile Crisis resolution"
  */
 const queryCollection = tool({
-  description: "Perform semantic searches through historical document collections. For complex topics, make MULTIPLE separate tool calls with focused queries rather than combining topics in one search. Always set appropriate date ranges for historical events.",
+  description: "Perform semantic searches through historical document collections. For complex topics, make MULTIPLE separate tool calls with focused queries. Use narrow date ranges (e.g., ~5 years) when possible, as wider ranges increase error likelihood.",
   parameters: z.object({ 
     // collectionId: z.string().describe("Collection ID to search within (use 'history-lab-1' unless instructed otherwise)"),
     query: z.string().describe("The semantic search query text - make focused, specific queries rather than combining multiple topics"),
@@ -106,7 +106,7 @@ const queryCollection = tool({
       const agent = getAgent();
       const vectorizeSearch = agent.getVectorizeSearch();
 
-      const k = 10;
+      const k = 7;
       
       // Build filters for the search
       const filters: Record<string, any> = {};

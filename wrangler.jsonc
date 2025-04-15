@@ -55,8 +55,8 @@
     },
     {
       "binding": "FEEDBACK_LOGS",
-      "id": "ce18ad4bd6174c27b0283a06404802f0", // <-- Replace with actual ID
-      "preview_id": "84e1177667614f4793158bbc708a9ce2" // <-- Replace with actual preview ID
+      "id": "ce18ad4bd6174c27b0283a06404802f0", 
+      "preview_id": "84e1177667614f4793158bbc708a9ce2" 
     }
   ]
   // ,
