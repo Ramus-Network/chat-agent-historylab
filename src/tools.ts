@@ -86,20 +86,24 @@ const getDocumentText = tool({
 const queryCollection = tool({
   description: "Perform semantic searches through historical document collections. For complex topics, make MULTIPLE separate tool calls with focused queries. Use narrow date ranges (e.g., ~5 years) when possible, as wider ranges increase error likelihood.",
   parameters: z.object({ 
-    // collectionId: z.string().describe("Collection ID to search within (use 'history-lab-1' unless instructed otherwise)"),
+    // collectionId: z.string().describe("Collection ID to search within (use 'history-lab-2' unless instructed otherwise)"),
     query: z.string().describe("The semantic search query text - make focused, specific queries rather than combining multiple topics"),
     doc_id: z.string().optional().describe("Filter by specific document ID when looking for more information within a document"),
-    authored_start: z.string().optional().describe("Start date for filtering documents (format: YYYY-MM-DD)"),
-    authored_end: z.string().optional().describe("End date for filtering documents (format: YYYY-MM-DD)")
+    authored_start_year_month: z.string().optional().describe("Start year and month for filtering documents (format: 'YYYY-MM' as string). Preferred for most searches as it's more efficient."),
+    authored_end_year_month: z.string().optional().describe("End year and month for filtering documents (format: 'YYYY-MM' as string). Preferred for most searches as it's more efficient."),
+    authored_start_year_month_day: z.string().optional().describe("Start date for filtering documents (format: 'YYYY-MM-DD' as string). Only use for highly specific date-sensitive searches."),
+    authored_end_year_month_day: z.string().optional().describe("End date for filtering documents (format: 'YYYY-MM-DD' as string). Only use for highly specific date-sensitive searches.")
   }),
-  execute: async ({ query, doc_id, authored_start, authored_end }) => {
+  execute: async ({ query, doc_id, authored_start_year_month, authored_end_year_month, authored_start_year_month_day, authored_end_year_month_day }) => {
     // Log the search parameters
     logInfo(
       "queryCollection", 
       `Querying collection: history-lab-1 with query: ${query}` + 
       (doc_id ? `, doc_id: ${doc_id}` : "") +
-      (authored_start ? `, authored from: ${authored_start}` : "") +
-      (authored_end ? `, to: ${authored_end}` : "")
+      (authored_start_year_month ? `, authored_year_month from: ${authored_start_year_month}` : "") +
+      (authored_end_year_month ? `, to: ${authored_end_year_month}` : "") +
+      (authored_start_year_month_day ? `, authored_year_month_day from: ${authored_start_year_month_day}` : "") +
+      (authored_end_year_month_day ? `, to: ${authored_end_year_month_day}` : "")
     );
 
     try {
@@ -116,17 +120,59 @@ const queryCollection = tool({
         filters.doc_id = doc_id;
       }
       
-      // Add date range filters if specified
-      if (authored_start || authored_end) {
-        filters.authored = {};
+      // Helper function to convert date strings to numeric format
+      const convertYearMonthToNumber = (dateStr: string): number => {
+        // Extract YYYY and MM parts from YYYY-MM format
+        const [year, month] = dateStr.split('-');
+        // Return YYYYMM as number
+        return parseInt(`${year}${month}`, 10);
+      };
+      
+      const convertYearMonthDayToNumber = (dateStr: string): number => {
+        // Remove all hyphens to convert YYYY-MM-DD to YYYYMMDD
+        const numStr = dateStr.replace(/-/g, '');
+        return parseInt(numStr, 10);
+      };
+      
+      // Check if year-month-day parameters are provided
+      const hasYearMonthDayParams = authored_start_year_month_day || authored_end_year_month_day;
+      
+      // Add year_month_day date range filters if specified (priority over year_month)
+      if (hasYearMonthDayParams) {
+        filters.authored_year_month_day = {};
         
-        if (authored_start) {
-          // Convert to unix timestamp
-          filters.authored.$gte = new Date(authored_start).getTime();
+        // Check if start and end are the same - use $eq instead of range
+        if (authored_start_year_month_day && authored_end_year_month_day && 
+            authored_start_year_month_day === authored_end_year_month_day) {
+          filters.authored_year_month_day.$eq = convertYearMonthDayToNumber(authored_start_year_month_day);
+        } else {
+          // Use range operators when values are different
+          if (authored_start_year_month_day) {
+            filters.authored_year_month_day.$gte = convertYearMonthDayToNumber(authored_start_year_month_day);
+          }
+          
+          if (authored_end_year_month_day) {
+            filters.authored_year_month_day.$lte = convertYearMonthDayToNumber(authored_end_year_month_day);
+          }
         }
+      } 
+      // Only use year_month filters if year_month_day is not provided
+      else if (authored_start_year_month || authored_end_year_month) {
+        filters.authored_year_month = {};
         
-        if (authored_end) {
-          filters.authored.$lte = new Date(authored_end).getTime();
+        // Check if start and end are the same - use $eq instead of range
+        if (authored_start_year_month && authored_end_year_month && 
+            authored_start_year_month === authored_end_year_month) {
+          filters.authored_year_month.$eq = convertYearMonthToNumber(authored_start_year_month);
+        } else {
+          // Use range operators when values are different
+          if (authored_start_year_month) {
+            filters.authored_year_month.$gte = convertYearMonthToNumber(authored_start_year_month);
+          }
+          
+          if (authored_end_year_month) {
+            filters.authored_year_month.$lte = convertYearMonthToNumber(authored_end_year_month);
+          }
         }
       }
       
@@ -159,7 +205,7 @@ const queryCollection = tool({
 
       // Check for error
       if (results?.error) {
-        logError("queryCollection", `Error querying collection`, results.error, { query, doc_id, authored_start, authored_end });        
+        logError("queryCollection", `Error querying collection`, results.error, { query, doc_id, authored_start_year_month, authored_end_year_month, authored_start_year_month_day, authored_end_year_month_day });        
       }                
       
       // Log the number of results returned
@@ -170,7 +216,7 @@ const queryCollection = tool({
       return results;
     } catch (error) {
       // logDebug("queryCollection", `Error querying collection: ${error}`);
-      logError("queryCollection", "Error querying collection", error, { query, doc_id, authored_start, authored_end });
+      logError("queryCollection", "Error querying collection", error, { query, doc_id, authored_start_year_month, authored_end_year_month, authored_start_year_month_day, authored_end_year_month_day });
       return { error: "Failed to query collection" };
     }
   },

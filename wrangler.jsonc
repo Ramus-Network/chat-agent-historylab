@@ -44,7 +44,7 @@
   "services": [
     { 
         "binding": "VECTORIZE_SEARCH", // what you call it in the code
-        "service": "vector-search-worker-2" // the actual worker name        
+        "service": "vector-search-worker-3" // the actual worker name        
     }
   ],
   "kv_namespaces": [

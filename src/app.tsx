@@ -598,26 +598,48 @@ export default function Chat() {
                     </div>
                   )
                 // Standard display for queryCollection results
-                ) : toolInvocation.toolName === 'queryCollection' && toolInvocation.result && typeof toolInvocation.result === 'object' && 'matches' in toolInvocation.result ? (
+                ) : toolInvocation.toolName === 'queryCollection' && toolInvocation.result && typeof toolInvocation.result === 'object' ? (
                   <div className="font-normal text-gray-700">
-                    <div className="mb-1">Found {toolInvocation.result.matches?.length || 0} documents:</div>
-                    {toolInvocation.result.matches?.map((match: any, i: number) => (
-                      <div key={i} className="mb-1 pl-2">
-                        <span className="text-gray-600">{i+1}. </span>
-                        {match.metadata?.file_key ? (
-                          <a
-                            href={`https://doc-viewer.ramus.network/${match.metadata.file_key}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-normal text-[#6CA0D6] hover:underline"
-                          >
-                            {match.metadata?.doc_id || 'Unknown Document'}
-                          </a>
-                        ) : (
-                          <span className="font-normal text-gray-700">{match.metadata?.doc_id || 'Unknown Document'}</span>
-                        )}
-                      </div>
-                    ))}
+                    {(() => {
+                      // Handle new response format (with documents array)
+                      if ('documents' in toolInvocation.result) {
+                        const { documents, total_chunks, status } = toolInvocation.result;
+                        return (
+                          <>
+                            <div className="mb-1">
+                              Found {documents.length} documents (from {total_chunks} matching chunks)
+                              {status === 'partial_success' && <span className="text-amber-600 text-xs ml-1">(partial results)</span>}
+                            </div>
+                            {documents.map((doc: any, i: number) => (
+                              <div key={i} className="mb-1 pl-2">
+                                <span className="text-gray-600">{i+1}. </span>
+                                {doc.file_info?.r2Key ? (
+                                  <a
+                                    href={`https://doc-viewer.ramus.network/${doc.file_info.r2Key}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-normal text-[#6CA0D6] hover:underline"
+                                  >
+                                    {doc.file_info.metadata?.title || doc.document_id || 'Unknown Document'}
+                                  </a>
+                                ) : (
+                                  <span className="font-normal text-gray-700">
+                                    {doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
+                                  </span>
+                                )}
+                                <span className="text-xs text-gray-500 ml-1">({doc.chunks.length} chunks)</span>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      }                      
+                      // Fallback for unknown format
+                      else {
+                        return (
+                          <div className="mb-1">Search results in unknown format.</div>
+                        );
+                      }
+                    })()}
                   </div>
                 ) : (
                   // Generic display for other tool results
