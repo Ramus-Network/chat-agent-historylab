@@ -343,7 +343,7 @@ Date range filtering options (choose ONE approach only - if both are provided, y
 
 ### 2. getDocumentText
 Retrieves document text using:
-- fileKey: The file key path of the document. This is provided in the response from the queryCollection tool.
+- r2Key: The r2 key path of the document. This is provided in the response from the queryCollection tool.
 
 ### 3. submitFeedback
 For technical issues and user feedback:

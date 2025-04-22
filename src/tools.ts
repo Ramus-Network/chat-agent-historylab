@@ -39,21 +39,20 @@ const testTool = tool({
  */
 const getDocumentText = tool({
   description: "get the text of a given document from the R2 bucket",
-  parameters: z.object({ fileKey: z.string() }),
-  execute: async ({ fileKey }) => {
-    logInfo("getDocumentText", `Getting document text for document: ${fileKey}`);
+  parameters: z.object({ r2Key: z.string() }),
+  execute: async ({ r2Key }) => {
+    logInfo("getDocumentText", `Getting document text for document: ${r2Key}`);
 
     try {
       const agent = getAgent();
       const bucket = agent.getBucket();
-      const file = await bucket.get(fileKey);
+      const file = await bucket.get(r2Key);
       if (!file) {
         return { error: "File not found" };
       }
       const text = await file.text();
       return text;
-    } catch (error) {
-      logDebug("getDocumentText", `Error getting document text: ${error}`);
+    } catch (error) {      
       logError("getDocumentText", "Error getting document text", error);
       return { error: "Failed to get document text" };
     }

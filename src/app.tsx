@@ -482,12 +482,214 @@ export default function Chat() {
   const renderToolInvocation = (toolInvocation: any, messageId: string, index: number) => {
     const toolCallId = toolInvocation.toolCallId;
     const toolName = toolInvocation.toolName;
+    
+    // Internal component to handle query results state and rendering
+    const QueryCollectionResults = ({ resultData }: { resultData: any }) => {
+      const [showAllResults, setShowAllResults] = useState(false);
+      const RESULTS_TO_SHOW_INITIALLY = 3;
+      
+      let documents: any[] = [];
+      let totalChunks = 0;
+      let status = 'unknown';
+      let isError = false;
+      let errorMessage = 'An error occurred retrieving search results.';
 
-    // --- Confirmation UI --- 
+      if (resultData.status === 'error') {
+        isError = true;
+        errorMessage = resultData.message || resultData.error || errorMessage;
+      }
+      else if ('documents' in resultData) {
+        documents = resultData.documents || [];
+        totalChunks = resultData.total_chunks || 0;
+        status = resultData.status || 'success';
+      } 
+      else { /* No documents or unknown format */ }
+
+      if (isError) {
+        return (
+            <div className="bg-red-50 p-3 border border-red-300 rounded-md text-red-700 flex items-center gap-2 shadow-sm">
+            <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
+            <span className="text-xs font-medium">Search Error: {errorMessage}</span>
+          </div>
+        );
+      }
+      
+      if (documents.length === 0) {
+          return (
+            <div className="bg-gray-50 p-3 border border-gray-200 rounded-md text-gray-600 flex items-center gap-2 shadow-sm">
+            <FileText size={14} className="text-gray-400 flex-shrink-0" />
+            <span className="text-xs font-medium italic">No documents found matching your query.</span>
+          </div>
+        );
+      }
+
+      const resultsToShow = showAllResults ? documents.length : RESULTS_TO_SHOW_INITIALLY;
+      const hasMoreResults = documents.length > RESULTS_TO_SHOW_INITIALLY;
+
+      return (
+        <div className="bg-blue-50/70 p-3 border border-blue-200 rounded-md text-gray-800 shadow-sm">
+          <div className="text-xs font-medium mb-2 text-blue-800">
+            Found {documents.length} documents 
+            {status === 'partial_success' && <span className="text-amber-600 font-normal ml-1">(partial results)</span>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {documents.slice(0, resultsToShow).map((doc: any, i: number) => (
+              <a
+                key={doc.document_id || i}
+                href={doc.file_info?.r2Key ? `https://doc-viewer.ramus.network/${doc.file_info.r2Key}` : '#'}
+                target={doc.file_info?.r2Key ? "_blank" : "_self"}
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium transition-colors shadow-sm ${
+                  doc.file_info?.r2Key 
+                    ? 'bg-white border border-blue-300 text-blue-800 hover:bg-blue-100 hover:border-blue-400 cursor-pointer' 
+                    : 'bg-gray-100 border border-gray-300 text-gray-500 cursor-default'
+                }`}
+                title={doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
+                onClick={(e) => { if (!doc.file_info?.r2Key) e.preventDefault(); }}
+              >
+                <FileText size={12} className={doc.file_info?.r2Key ? "text-blue-500" : "text-gray-400"} />
+                <span className="truncate max-w-[200px]">
+                  {doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
+                </span>
+              </a>
+            ))}
+          </div>
+          {hasMoreResults && !showAllResults && (
+            <button
+              onClick={() => setShowAllResults(true)}
+              className="mt-2 text-xs text-blue-600 hover:underline"
+            >
+              Show {documents.length - RESULTS_TO_SHOW_INITIALLY} more results...
+            </button>
+          )}
+        </div>
+      );
+    };
+
+    // --- Render Logic for Tool Invocation --- 
+    
+    // Helper function to format date range string
+    const formatDateRange = (args: any): string => {
+      const { 
+        authored_start_year_month, authored_end_year_month,
+        authored_start_year_month_day, authored_end_year_month_day
+      } = args || {};
+
+      const start_day = authored_start_year_month_day;
+      const end_day = authored_end_year_month_day;
+      const start_month = authored_start_year_month;
+      const end_month = authored_end_year_month;
+
+      if (start_day || end_day) {
+        if (start_day && end_day && start_day === end_day) return `(${start_day})`;
+        if (start_day && end_day) return `(${start_day} to ${end_day})`;
+        if (start_day) return `(from ${start_day})`;
+        if (end_day) return `(until ${end_day})`;
+      } else if (start_month || end_month) {
+        if (start_month && end_month && start_month === end_month) return `(${start_month})`;
+        if (start_month && end_month) return `(${start_month} to ${end_month})`;
+        if (start_month) return `(from ${start_month})`;
+        if (end_month) return `(until ${end_month})`;
+      }
+      return ""; // No date range provided
+    };
+
+    // 1. Render Query Collection Tool
+    if (toolName === 'queryCollection') {
+      if (toolInvocation.state !== 'result') {
+        const queryText = toolInvocation.args?.query || '...';
+        const dateRangeStr = formatDateRange(toolInvocation.args);
+        const displayText = `"${queryText.length > 60 ? queryText.substring(0, 60) + '...' : queryText}" ${dateRangeStr}`.trim();
+
+        return (
+          <div 
+            key={`${messageId}-tool-searching-${index}`} 
+            className="bg-blue-50 p-3 my-3 border border-blue-200 rounded-md text-blue-700 flex items-center gap-2 shadow-sm"
+          >
+            <RefreshCw size={14} className="animate-spin text-blue-500" />
+            <span className="text-xs font-medium">
+              Searching archive for: <span className="italic">{displayText}</span>
+            </span>
+          </div>
+        );
+      }
+      else if (toolInvocation.result && typeof toolInvocation.result === 'object') {
+        return (
+          <div key={`${messageId}-tool-results-${index}`} className="my-3">
+            <QueryCollectionResults resultData={toolInvocation.result} />
+          </div>
+        );
+      }
+      else {
+        return (
+          <div 
+            key={`${messageId}-tool-unknown-${index}`} 
+            className="bg-gray-50 p-3 my-3 border border-gray-200 rounded-md text-gray-500 flex items-center gap-2 shadow-sm"
+          >
+            <AlertTriangle size={14} className="text-gray-400 flex-shrink-0" />
+            <span className="text-xs font-medium italic">Received unexpected search result format.</span>
+          </div>
+        );
+      }
+    }
+    
+    // 2. Render Get Document Text Tool
+    if (toolName === 'getDocumentText') {
+      const r2Key = toolInvocation.args?.r2Key || 'unknown document';
+      const r2KeySnippet = r2Key.length > 40 ? `...${r2Key.substring(r2Key.length - 40)}` : r2Key;
+      
+      if (toolInvocation.state !== 'result') {
+        return (
+          <div 
+            key={`${messageId}-tool-fetching-${index}`} 
+            className="bg-blue-50 p-3 my-3 border border-blue-200 rounded-md text-blue-700 flex items-center gap-2 shadow-sm"
+          >
+            <RefreshCw size={14} className="animate-spin text-blue-500" />
+            <span className="text-xs font-medium">
+              Fetching text for document: <span className="font-mono text-[10px] bg-blue-100 px-1 rounded">{r2KeySnippet}</span>...
+            </span>
+          </div>
+        );
+      }
+      
+      const result = toolInvocation.result;
+      const isError = typeof result === 'object' && result !== null && result.error;
+      const errorMessage = isError ? result.error : 'Unknown error';
+
+      if (isError) {
+        return (
+          <div 
+            key={`${messageId}-tool-error-${index}`} 
+            className="bg-red-50 p-3 my-3 border border-red-300 rounded-md text-red-700 flex items-center gap-2 shadow-sm"
+          >
+            <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
+            <span className="text-xs font-medium">
+              Error fetching <span className="font-mono text-[10px] bg-red-100 px-1 rounded">{r2KeySnippet}</span>: {errorMessage}
+            </span>
+          </div>
+        );
+      }
+      else {
+         return (
+          <div 
+            key={`${messageId}-tool-success-${index}`} 
+            className="bg-blue-50 p-3 my-3 border border-blue-200 rounded-md text-blue-700 flex items-center gap-2 shadow-sm"
+          >
+            <Check size={14} className="text-blue-500 flex-shrink-0" />
+            <span className="text-xs font-medium">
+              Document text retrieved.
+            </span>
+          </div>
+        );
+      }
+    }
+
+    // 3. Render Confirmation UI (for submitFeedback and potentially others)
     if (
       toolsRequiringConfirmation.includes(toolName as keyof typeof tools) &&
       toolInvocation.state === "call"
     ) {
+      const description = toolInvocation.args?.description;
       return (
         <div 
           key={`${messageId}-tool-confirm-${index}`} 
@@ -501,39 +703,28 @@ export default function Chat() {
               Action Required: <span className="font-mono">{toolName}</span>
             </h4>
           </div>
-
           <div className="mb-4">
-            <h5 className="text-xs font-semibold mb-1 text-amber-700/90">
-              Details:
-            </h5>
-            <pre className="bg-amber-100/70 border border-amber-200 p-2 rounded-md text-xs overflow-auto font-mono text-amber-800/90">
-              {JSON.stringify(toolInvocation.args, null, 2)}
-            </pre>
+            <h5 className="text-xs font-semibold mb-1 text-amber-700/90">Details:</h5>
+            {toolName === 'submitFeedback' && description ? (
+              <div className="bg-amber-100/70 border border-amber-200 p-2 rounded-md text-xs text-amber-800/90 whitespace-pre-wrap break-words">
+                {description}
+              </div>
+            ) : (
+              <pre className="bg-amber-100/70 border border-amber-200 p-2 rounded-md text-xs overflow-auto font-mono text-amber-800/90">
+                {JSON.stringify(toolInvocation.args, null, 2)}
+              </pre>
+            )}
           </div>
-
-          <p className="text-xs text-amber-700 mb-3">
-            Do you want to approve this action?
-          </p>
-
+          <p className="text-xs text-amber-700 mb-3">Do you want to approve this action?</p>
           <div className="flex gap-2 justify-end">
             <button
-              onClick={() =>
-                addToolResult({
-                  toolCallId,
-                  result: APPROVAL.NO,
-                })
-              }
+              onClick={() => addToolResult({ toolCallId, result: APPROVAL.NO })}
               className="inline-flex h-7 items-center justify-center border border-amber-400 bg-white text-amber-800 text-xs font-medium transition-colors hover:bg-amber-100 hover:border-amber-500 px-3 gap-1 rounded-md cursor-pointer"
             >
               Reject
             </button>
             <button
-              onClick={() =>
-                addToolResult({
-                  toolCallId,
-                  result: APPROVAL.YES,
-                })
-              }
+              onClick={() => addToolResult({ toolCallId, result: APPROVAL.YES })}
               className="inline-flex h-7 items-center justify-center border border-[#6CA0D6] bg-[#6CA0D6] text-white text-xs font-medium transition-colors hover:bg-[#5a90c0] hover:border-[#5a90c0] px-3 gap-1 rounded-md cursor-pointer shadow-sm"
             >
               Approve
@@ -543,118 +734,63 @@ export default function Chat() {
       );
     }
 
-    // --- Standard Tool Invocation Display (Result) --- 
-    // Only render if the state is 'result' or if it's a tool that *doesn't* require confirmation
-    if (toolInvocation.state === 'result' || !toolsRequiringConfirmation.includes(toolName as keyof typeof tools)) {
-      return (
-        <div 
-          key={`${messageId}-tool-result-${index}`} 
-          className="bg-blue-50 p-3 my-3 border border-[#6CA0D6]/50 rounded-md text-gray-700"
-        >
-          <div className="font-mono text-xs mb-2 font-semibold text-blue-800">
-            Tool: <span className="font-normal text-blue-700">{toolInvocation.toolName}</span>
+    // 4. Render Standard Tool Results (for non-queryCollection, non-getDocumentText tools)
+    if (toolInvocation.state === 'result' && !['queryCollection', 'getDocumentText'].includes(toolName)) {
+      if (toolName === 'submitFeedback') {
+        const result = toolInvocation.result;
+        const isError = typeof result === 'object' && result !== null && !result.success;
+        const isRejected = typeof result === 'string' && result === APPROVAL.NO; 
+        const rejectedByUser = typeof result === 'object' && result !== null && result.status === 'rejected_by_user';
+        
+        if (isRejected || rejectedByUser) {
+          return (
+            <div 
+              key={`${messageId}-tool-rejected-${index}`} 
+              className="bg-orange-50 p-3 my-3 border border-orange-300 rounded-md text-orange-700 flex items-center gap-2 shadow-sm"
+            >
+              <AlertTriangle size={14} className="text-orange-600 flex-shrink-0" />
+              <span className="text-xs font-medium">Feedback Submission Rejected by User.</span>
+            </div>
+          );
+        }
+        else if (isError) {
+          const errorMessage = result.error || "Failed to submit feedback.";
+          return (
+             <div 
+              key={`${messageId}-tool-error-${index}`} 
+              className="bg-red-50 p-3 my-3 border border-red-300 rounded-md text-red-700 flex items-center gap-2 shadow-sm"
+            >
+              <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
+              <span className="text-xs font-medium">{errorMessage}</span>
+            </div>
+          );
+        }
+        else {
+          return (
+            <div 
+              key={`${messageId}-tool-success-${index}`} 
+              className="bg-blue-50 p-3 my-3 border border-blue-200 rounded-md text-blue-700 flex items-center gap-2 shadow-sm"
+            >
+              <Check size={14} className="text-blue-500 flex-shrink-0" />
+              <span className="text-xs font-medium">Feedback submitted successfully.</span>
+            </div>
+          );
+        }
+      }
+      else {
+        return (
+          <div 
+            key={`${messageId}-tool-generic-result-${index}`} 
+            className="bg-gray-100 p-3 my-3 border border-gray-300 rounded-md text-gray-700 text-xs shadow-sm"
+          >
+            <span className="font-semibold">Tool Result ({toolName}):</span>
+            <pre className="mt-1 text-[10px] overflow-auto">{JSON.stringify(toolInvocation.result, null, 2)}</pre>
           </div>
-          {toolInvocation.args && Object.keys(toolInvocation.args).length > 0 && (
-            <div className="font-mono text-xs mb-1">
-              <div className="font-semibold text-blue-800">Parameters:</div>
-              {Object.entries(toolInvocation.args).map(([key, value]) => (
-                <div key={key} className="pl-2 text-[10px] flex flex-wrap">
-                  <span className="text-blue-800/80 mr-1 font-medium">{key}:</span>
-                  <span className="font-normal text-blue-700 break-all">{typeof value === 'string' ? value : JSON.stringify(value)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {toolInvocation.state === 'result' && (
-            <div className="font-mono text-xs mb-1 mt-2">
-              <div className="font-semibold text-blue-800">Result:</div>
-              <div className="pl-2 text-[10px]">
-                {/* Custom display for error status */}
-                {typeof toolInvocation.result === 'object' && toolInvocation.result !== null && toolInvocation.result.status === 'error' ? (
-                  <div className="bg-red-50 border border-red-300 rounded p-2 mt-1 flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
-                    <span className="text-red-700 text-xs font-medium break-all">
-                      {toolInvocation.result.message || toolInvocation.result.error || "An unspecified tool error occurred."}
-                    </span>
-                  </div>
-                /* Custom display for submitFeedback result */
-                ) : toolInvocation.toolName === 'submitFeedback' && typeof toolInvocation.result === 'object' && toolInvocation.result !== null ? (
-                  // Handle specific rejection status first
-                  toolInvocation.result.status === 'rejected_by_user' ? (
-                    <div className="flex items-center gap-1.5 text-orange-700 text-xs font-medium mt-1">
-                      <AlertTriangle className="h-3.5 w-3.5 text-orange-600" />
-                      <span>Feedback Submission Rejected by User.</span>
-                    </div>
-                  // Handle success/failure if not rejected
-                  ) : toolInvocation.result.success ? (
-                    <div className="flex items-center gap-1.5 text-green-700 text-xs font-medium mt-1">
-                      <Check className="h-3.5 w-3.5 text-green-600" />
-                      <span>{toolInvocation.result.message || "Feedback submitted successfully!"}</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-red-700 text-xs font-medium mt-1">
-                      <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
-                      <span>{toolInvocation.result.error || "Failed to submit feedback."}</span>
-                    </div>
-                  )
-                // Standard display for queryCollection results
-                ) : toolInvocation.toolName === 'queryCollection' && toolInvocation.result && typeof toolInvocation.result === 'object' ? (
-                  <div className="font-normal text-gray-700">
-                    {(() => {
-                      // Handle new response format (with documents array)
-                      if ('documents' in toolInvocation.result) {
-                        const { documents, total_chunks, status } = toolInvocation.result;
-                        return (
-                          <>
-                            <div className="mb-1">
-                              Found {documents.length} documents (from {total_chunks} matching chunks)
-                              {status === 'partial_success' && <span className="text-amber-600 text-xs ml-1">(partial results)</span>}
-                            </div>
-                            {documents.map((doc: any, i: number) => (
-                              <div key={i} className="mb-1 pl-2">
-                                <span className="text-gray-600">{i+1}. </span>
-                                {doc.file_info?.r2Key ? (
-                                  <a
-                                    href={`https://doc-viewer.ramus.network/${doc.file_info.r2Key}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-normal text-[#6CA0D6] hover:underline"
-                                  >
-                                    {doc.file_info.metadata?.title || doc.document_id || 'Unknown Document'}
-                                  </a>
-                                ) : (
-                                  <span className="font-normal text-gray-700">
-                                    {doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
-                                  </span>
-                                )}
-                                <span className="text-xs text-gray-500 ml-1">({doc.chunks.length} chunks)</span>
-                              </div>
-                            ))}
-                          </>
-                        );
-                      }                      
-                      // Fallback for unknown format
-                      else {
-                        return (
-                          <div className="mb-1">Search results in unknown format.</div>
-                        );
-                      }
-                    })()}
-                  </div>
-                ) : (
-                  // Generic display for other tool results
-                  <span className="font-normal text-gray-700 break-all">
-                    {JSON.stringify(toolInvocation.result).substring(0, 200)}{JSON.stringify(toolInvocation.result).length > 200 ? '...' : ''}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      );
+        );
+      }
     }
 
-    // If it's a tool requiring confirmation but state is not 'call' or 'result' (e.g., pending), render nothing for now.
+    // Default: Render nothing if none of the above conditions are met
     return null; 
   };
 
@@ -750,7 +886,7 @@ export default function Chat() {
                     </div>
                   )}
                   {status === "ready" && agentMessages.length > 0 && (
-                     <div className="px-2 py-1 text-xs font-mono bg-green-100 text-green-700 rounded-md border border-green-200">
+                     <div className="px-2 py-1 text-xs font-mono bg-blue-100 text-blue-700 rounded-md border border-blue-200">
                       Ready
                     </div>
                   )}
