@@ -123,6 +123,15 @@ export default function Chat() {
   // Ref to store timeout ID
   const limboTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // State to track padding space needed after user message
+  const [paddingHeight, setPaddingHeight] = useState(0);
+  // Track if we're on the first AI response in the conversation
+  const isFirstConversationRef = useRef(true);
+  // Track the ID of the message being observed
+  const observedMessageIdRef = useRef<string | null>(null);
+  // Track interval timer for fallback height checking
+  const heightCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
   // State for conversation ID (from URL query parameter or newly generated)
   const [conversationId, setConversationId] = useState(() => {
     // Check if there's an ID in the URL query parameter
@@ -162,6 +171,8 @@ export default function Chat() {
   // Reference to the bottom of the messages container for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Ref for the input container to measure its position
+  const inputContainerRef = useRef<HTMLDivElement>(null);
 
   // Function to scroll the message container to the bottom
   const scrollToBottom = useCallback(() => {
@@ -250,6 +261,39 @@ export default function Chat() {
       return;
     }
 
+    // Check if this is the first message in the conversation
+    const isFirstMessage = agentMessages.length === 0;
+    
+    // If this is the first message, mark it so we don't add padding on the first AI response
+    isFirstConversationRef.current = isFirstMessage;
+
+    // Set initial padding to full height ONLY if this is not the first message
+    // Calculate dynamic padding based on input container position
+    if (!isFirstMessage) {
+      const calculateInitialPadding = () => {
+        // Get viewport dimensions
+        const viewportHeight = window.innerHeight;
+        
+        // Get the actual position of the input container
+        if (!inputContainerRef.current) return 0;
+        
+        const inputRect = inputContainerRef.current.getBoundingClientRect();
+        const inputTop = inputRect.top;
+        
+        // Calculate padding in vh units (convert from pixels to vh)
+        // Leave 120px for the user message to be visible
+        const visibleMessageHeight = 220;
+        const paddingPx = inputTop - visibleMessageHeight;
+        const paddingVh = (paddingPx / viewportHeight) * 100;
+        
+        return Math.max(0, paddingVh);
+      };
+      
+      setPaddingHeight(calculateInitialPadding());
+    } else {
+      setPaddingHeight(0); // No padding for first message
+    }
+    
     setIsSubmitting(true);
     
     // Start timeout to detect limbo state
@@ -267,7 +311,180 @@ export default function Chat() {
         },
       },
     });
+
+    // Scroll down after submission, but position the new user message at the top
+    setTimeout(() => {
+      const messages = document.querySelectorAll('[id^="message-"]');
+      // Find the latest user message (it should be the last one with items-end class)
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].classList.contains('items-end')) {
+          messages[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        }
+      }
+    }, 150); // Slightly longer delay to ensure the message is rendered
   };
+
+  // Effect to dynamically adjust padding as AI response grows
+  useEffect(() => {
+    // Skip the effect if not streaming or if this is the first conversation
+    if (status !== 'streaming') {
+      // Clear any existing interval when not streaming
+      if (heightCheckIntervalRef.current) {
+        clearInterval(heightCheckIntervalRef.current);
+        heightCheckIntervalRef.current = null;
+      }
+      return;
+    }
+    
+    if (isFirstConversationRef.current) {
+      setPaddingHeight(0); // Ensure no padding for first conversation
+      return;
+    }
+
+    // Function to find the latest AI message element
+    const findLatestAIMessage = () => {
+      const messages = document.querySelectorAll('[id^="message-"]');
+      // Look for the most recent assistant message (not from the user)
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (!messages[i].classList.contains('items-end')) { // Not a user message
+          return { 
+            element: messages[i] as HTMLElement,
+            id: messages[i].id
+          };
+        }
+      }
+      return null;
+    };
+
+    // Function to calculate padding based on message height
+    const calculatePadding = (messageElement: HTMLElement) => {
+      const rect = messageElement.getBoundingClientRect();
+      const messageHeight = rect.height;
+      const viewportHeight = window.innerHeight;
+      
+      // Measure the actual position of the input container
+      if (!inputContainerRef.current) return;
+      
+      const inputRect = inputContainerRef.current.getBoundingClientRect();
+      const inputTop = inputRect.top;
+      
+      // Calculate the available space from the message to the input
+      const availableSpace = inputTop;
+      
+      // Calculate padding needed to position message at the input top 
+      // while showing at least a minimum amount of the message
+      const minVisibleMessage = 120; // show at least 120px of message
+      const targetPadding = Math.max(0, availableSpace - messageHeight + minVisibleMessage);
+      
+      // Convert to vh units
+      const newPaddingVh = (targetPadding / viewportHeight) * 100;
+      
+      // Only update if padding changed significantly (avoids minor flicker)
+      if (Math.abs(newPaddingVh - paddingHeight) > 0.5) {
+        setPaddingHeight(newPaddingVh);
+      }
+    };
+
+    // Get a reference to the latest AI message (after a short delay to ensure DOM is updated)
+    const setupObserver = () => {
+      const result = findLatestAIMessage();
+      if (!result) return;
+      
+      const { element: aiMessage, id: messageId } = result;
+      
+      // If this is the same message we're already observing, don't recreate the observer
+      if (observedMessageIdRef.current === messageId) return;
+      
+      // Remember which message we're observing
+      observedMessageIdRef.current = messageId;
+      
+      // Clear any existing interval
+      if (heightCheckIntervalRef.current) {
+        clearInterval(heightCheckIntervalRef.current);
+      }
+      
+      // Set up ResizeObserver to monitor the AI message size
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.target === aiMessage) {
+            calculatePadding(aiMessage);
+          }
+        }
+      });
+      
+      // Start observing the AI message
+      resizeObserver.observe(aiMessage);
+      
+      // Do an initial measurement immediately
+      calculatePadding(aiMessage);
+      
+      // Also set up a fallback interval to check height regularly
+      // This ensures updates even if the ResizeObserver misses some changes
+      heightCheckIntervalRef.current = setInterval(() => {
+        if (aiMessage && document.body.contains(aiMessage)) {
+          calculatePadding(aiMessage);
+        } else {
+          // If the element is no longer in the DOM, clear the interval
+          if (heightCheckIntervalRef.current) {
+            clearInterval(heightCheckIntervalRef.current);
+            heightCheckIntervalRef.current = null;
+          }
+        }
+      }, 200); // Check every 200ms
+      
+      // Clean up observer when component unmounts
+      return () => {
+        resizeObserver.disconnect();
+        if (heightCheckIntervalRef.current) {
+          clearInterval(heightCheckIntervalRef.current);
+          heightCheckIntervalRef.current = null;
+        }
+      };
+    };
+    
+    // Initial setup
+    const timeoutId = setTimeout(setupObserver, 50);
+    
+    // Re-run the setup whenever there are new messages
+    const messageObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          setupObserver();
+        }
+      }
+    });
+    
+    if (scrollContainerRef.current) {
+      messageObserver.observe(scrollContainerRef.current, { 
+        childList: true, 
+        subtree: true 
+      });
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+      messageObserver.disconnect();
+      if (heightCheckIntervalRef.current) {
+        clearInterval(heightCheckIntervalRef.current);
+        heightCheckIntervalRef.current = null;
+      }
+      // Reset observed message when effect cleanup runs
+      observedMessageIdRef.current = null;
+    };
+  }, [status, paddingHeight]);
+
+  // If conversation changes or is cleared, reset the first conversation flag
+  useEffect(() => {
+    if (agentMessages.length === 0) {
+      isFirstConversationRef.current = true;
+      observedMessageIdRef.current = null;
+      if (heightCheckIntervalRef.current) {
+        clearInterval(heightCheckIntervalRef.current);
+        heightCheckIntervalRef.current = null;
+      }
+    }
+  }, [agentMessages.length, conversationId]);
 
   // Function to reload the page
   const handleReload = () => {
@@ -365,39 +582,6 @@ export default function Chat() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [agentMessages, status]); // Re-run if messages or status change */
-
-  // Scroll to bottom when a new message is added
-  useEffect(() => {
-    if (agentMessages.length > 0) {
-      // Use a timeout to ensure the DOM has updated before scrolling
-      const timer = setTimeout(() => {
-        scrollToBottom();
-      }, 50); // Small delay (e.g., 50ms)
-      return () => clearTimeout(timer); // Cleanup timeout
-    }
-  }, [agentMessages.length, scrollToBottom]);
-
-  // Extract text content from the last message for dependency tracking
-  const lastMessageContent = useMemo(() => {
-    const lastMessage = agentMessages[agentMessages.length - 1];
-    if (!lastMessage || !lastMessage.parts) return '';
-    const content = lastMessage.parts
-      .filter(part => part.type === 'text')
-      .map(part => (part.type === 'text' ? part.text : ''))
-      .join('');
-    return content;
-  }, [agentMessages]);
-
-  // Auto-scroll during streaming
-  useEffect(() => {
-    if (status === 'streaming') {
-      // Use a small timeout to allow the DOM to update after new text arrives
-      const timer = setTimeout(() => {
-        scrollToBottom();
-      }, 100); // Increased delay to 100ms
-      return () => clearTimeout(timer); // Cleanup timeout on effect re-run or unmount
-    }
-  }, [status, lastMessageContent, scrollToBottom]); // Trigger on status change or last message content change
 
   // Format timestamp for message display
   const formatTime = (date: Date) => {
@@ -860,9 +1044,70 @@ export default function Chat() {
     };
   }, [isAtMaxHeight]);
 
+  // Add window resize listener to recalculate padding when viewport changes
+  useEffect(() => {
+    const handleResize = () => {
+      // Skip if not in the right state for padding
+      if (status !== 'streaming' || isFirstConversationRef.current) return;
+      
+      // Find the latest AI message and recalculate
+      const findLatestAIMessage = () => {
+        const messages = document.querySelectorAll('[id^="message-"]');
+        // Look for the most recent assistant message (not from the user)
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (!messages[i].classList.contains('items-end')) { // Not a user message
+            return { 
+              element: messages[i] as HTMLElement,
+              id: messages[i].id
+            };
+          }
+        }
+        return null;
+      };
+      
+      const calculatePadding = (messageElement: HTMLElement) => {
+        const rect = messageElement.getBoundingClientRect();
+        const messageHeight = rect.height;
+        const viewportHeight = window.innerHeight;
+        
+        // Measure the actual position of the input container
+        if (!inputContainerRef.current) return;
+        
+        const inputRect = inputContainerRef.current.getBoundingClientRect();
+        const inputTop = inputRect.top;
+        
+        // Calculate the available space from the message to the input
+        const availableSpace = inputTop;
+        
+        // Calculate padding needed to position message at the input top 
+        // while showing at least a minimum amount of the message
+        const minVisibleMessage = 120; // show at least 120px of message
+        const targetPadding = Math.max(0, availableSpace - messageHeight + minVisibleMessage);
+        
+        // Convert to vh units
+        const newPaddingVh = (targetPadding / viewportHeight) * 100;
+        
+        // Only update if padding changed significantly (avoids minor flicker)
+        if (Math.abs(newPaddingVh - paddingHeight) > 0.5) {
+          setPaddingHeight(newPaddingVh);
+        }
+      };
+      
+      const result = findLatestAIMessage();
+      if (result && result.element) {
+        calculatePadding(result.element);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [status, paddingHeight]);
+
   // Render the chat interface
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-50 text-gray-800 font-sans antialiased transition-all pb-0 selection:bg-[#6CA0D6] selection:text-white">
+    <div className="flex min-h-screen w-full flex-col bg-white text-gray-800 font-sans antialiased transition-all pb-0 selection:bg-[#6CA0D6] selection:text-white">
       <header className="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
         <div className="container flex h-14 items-center px-4 md:px-6">
           <div className="flex flex-1 items-center space-x-2 md:justify-between justify-end">
@@ -923,11 +1168,11 @@ export default function Chat() {
           </div>
         </div>
       </header>
-      <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-6xl mt-4 mb-0 flex-1 overflow-hidden px-4 lg:px-8 py-0 bg-white border border-gray-200 rounded-lg shadow-sm">
+      <div className="flex-1 overflow-hidden pb-20 bg-white">
+        <div className="mx-auto max-w-6xl mt-4 mb-0 flex-1 overflow-hidden px-4 lg:px-8 py-0">
           <div className="flex flex-col">
-            <div className="flex-1 overflow-y-auto mt-2 pr-2 custom-scrollbar" ref={scrollContainerRef}>
-              <div className="pb-[40px]">
+            <div className="flex-1 overflow-y-auto mt-2 pr-2 custom-scrollbar bg-white" ref={scrollContainerRef}>
+              <div className="pb-[80px] bg-white">
                 {agentMessages.length === 0 ? (
                   <div className="bg-white p-4 m-4 mt-8 rounded-lg border border-gray-200">
                     {/* <div className="rounded-md border border-gray-200 p-6 bg-white"> */}
@@ -1029,9 +1274,8 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
 
                       return (
                         <div
-                          className={`mb-5 flex flex-col p-1 ${
-                            isUser ? "items-end" : "items-start"
-                          }`}
+                          id={`message-${m.id}`}
+                          className={`mb-5 flex flex-col p-1 ${isUser ? "items-end" : "items-start"}`}
                           key={m.id}
                         >
                           <div
@@ -1218,71 +1462,83 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                   </>
                 )}
                 <div ref={messagesEndRef} style={{ height: '1px', width: '100%' }} />
+                {/* Dynamic padding that shrinks as AI response grows */}
+                {paddingHeight > 0 && (
+                  <div style={{ height: `${paddingHeight}vh` }}></div>
+                )}
               </div>
-            </div>
-            
-            <div className="bg-white backdrop-blur-md sticky bottom-0 border-t border-gray-200 py-3">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!isSubmitting && status !== "streaming" && status !== "error") {
-                    handleSubmit(e);
-                  }
-                }}
-                className="mx-4"
-              >
-                <div className="relative flex-1 rounded-lg bg-white transition-all duration-200 ease-in-out focus-within:ring-2 focus-within:ring-[#6CA0D6]/30 shadow-sm overflow-hidden">
-                  <textarea
-                    ref={textareaRef}
-                    placeholder="Enter your research query..."
-                    className="w-full bg-white py-2.5 px-4 text-gray-800 border-none font-sans text-sm placeholder:text-gray-400 focus:outline-none resize-none pr-12 pb-12 custom-scrollbar"
-                    value={agentInput}
-                    onChange={handleAgentInputChange}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        // Check if input is blank before submitting
-                        if (!isSubmitting && status !== "streaming" && status !== "error" && agentInput.trim()) {
-                          handleSubmit(e as unknown as React.FormEvent);
-                        }
-                      }
-                    }}
-                    rows={1}
-                    maxLength={60000}
-                    style={{
-                      height: "44px",
-                      minHeight: "44px",
-                      maxHeight: "200px",
-                      overflowY: "auto",
-                      ...(isAtMaxHeight
-                        ? {}
-                        : {
-                            msOverflowStyle: "none",
-                            scrollbarWidth: "none",
-                            WebkitOverflowScrolling: "touch"
-                          }),
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    className="border border-[#6CA0D6] bg-[#6CA0D6] text-white hover:bg-[#5a90c0] rounded-md p-2 absolute bottom-2.5 right-2.5 flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer disabled:opacity-50 disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
-                    disabled={isSubmitting || status === "streaming" || status === "error" || !agentInput.trim()}
-                  >
-                    <div className="relative w-5 h-5 flex items-center justify-center">
-                      <Send className={`h-5 w-5 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-0 scale-0" : "opacity-100 scale-100"}`} />
-                      <Square className={`h-4 w-4 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-100 scale-100" : "opacity-0 scale-0"} text-white`} />
-                    </div>
-                    <span className="sr-only">{(isSubmitting || status === "streaming" || status === "error") ? "Processing" : "Send"}</span>
-                  </button>
-                </div>
-              </form>
             </div>
           </div>
         </div>
       </div>
-      <footer className="bg-white border-t border-gray-200 py-3 text-center text-gray-800 mt-4">
-        <div className="container mx-auto px-4">
-          <p className="text-gray-500 text-xs font-mono flex items-center justify-center gap-1">            
+            
+      {/* Fixed input container - white background at the bottom portion */}
+      <div 
+        ref={inputContainerRef}
+        className="fixed bottom-0 left-0 right-0 z-20" 
+        style={{ 
+          background: 'linear-gradient(to bottom, transparent, white 15%, white)' 
+        }}
+      >
+        <div className="mx-auto max-w-6xl px-4 lg:px-8">
+          {/* Input form */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!isSubmitting && status !== "streaming" && status !== "error") {
+                handleSubmit(e);
+              }
+            }}
+            className="mb-2"
+          >
+            <div className="relative flex-1 rounded-lg bg-white transition-all duration-200 ease-in-out focus-within:ring-2 focus-within:ring-[#6CA0D6]/30 shadow-sm overflow-hidden border border-gray-200">
+              <textarea
+                ref={textareaRef}
+                placeholder="Enter your research query..."
+                className="w-full bg-white py-2.5 px-4 text-gray-800 border-none font-sans text-sm placeholder:text-gray-400 focus:outline-none resize-none pr-12 pb-12 custom-scrollbar"
+                value={agentInput}
+                onChange={handleAgentInputChange}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    // Check if input is blank before submitting
+                    if (!isSubmitting && status !== "streaming" && status !== "error" && agentInput.trim()) {
+                      handleSubmit(e as unknown as React.FormEvent);
+                    }
+                  }
+                }}
+                rows={1}
+                maxLength={60000}
+                style={{
+                  height: "44px",
+                  minHeight: "44px",
+                  maxHeight: "200px",
+                  overflowY: "auto",
+                  ...(isAtMaxHeight
+                    ? {}
+                    : {
+                        msOverflowStyle: "none",
+                        scrollbarWidth: "none",
+                        WebkitOverflowScrolling: "touch"
+                      }),
+                }}
+              />
+              <button
+                type="submit"
+                className="border border-[#6CA0D6] bg-[#6CA0D6] text-white hover:bg-[#5a90c0] rounded-md p-2 absolute bottom-2.5 right-2.5 flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer disabled:opacity-50 disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
+                disabled={isSubmitting || status === "streaming" || status === "error" || !agentInput.trim()}
+              >
+                <div className="relative w-5 h-5 flex items-center justify-center">
+                  <Send className={`h-5 w-5 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-0 scale-0" : "opacity-100 scale-100"}`} />
+                  <Square className={`h-4 w-4 absolute transition-all duration-300 ${(isSubmitting || status === "streaming" || status === "error") ? "opacity-100 scale-100" : "opacity-0 scale-0"} text-white`} />
+                </div>
+                <span className="sr-only">{(isSubmitting || status === "streaming" || status === "error") ? "Processing" : "Send"}</span>
+              </button>
+            </div>
+          </form>
+          
+          {/* Ramus footer now inside the fixed container */}
+          <div className="flex justify-center text-gray-500 text-xs font-mono mb-2">            
             <a 
               href="https://landing.ramus.network" 
               target="_blank" 
@@ -1296,9 +1552,9 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                 className="h-3.5 w-auto object-contain" 
               />
             </a>
-          </p>
+          </div>
         </div>
-      </footer>
+      </div>
     </div>
   );
 }
