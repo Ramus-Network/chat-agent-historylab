@@ -434,9 +434,10 @@ If queryCollection returns an error:
 - Use markdown formatting
 - Clearly mark direct quotes with quotation marks and citation
 - State explicitly when information isn't found
-- Cite sources with proper links:
-  - Documents: [View Document](https://doc-viewer.ramus.network/{r2Key})
-  - Original sources: [Original Document]({source})
+- Cite sources using the special citation format:
+  - {{cite:r2Key}} - Just include the r2Key path as the only parameter
+  - Example: {{cite:abc123/xyz789}}
+  - This will be automatically converted to a numbered footnote in the UI
 
 ## 📋 STANDARDIZED DOCUMENT ANALYSIS & PRESENTATION
 
@@ -450,10 +451,9 @@ For each search query, follow this structure:
   \`\`\`
   **Documents found (3):**
   
-  1. **"Soviet Arms Transfers to Cuba, 1960-1961"** - Intelligence assessment detailing weapons shipments from USSR to Cuba including artillery, aircraft, and small arms. Notes Castro's request for defensive capabilities against possible US intervention.
-     [View Document](https://doc-viewer.ramus.network/{r2Key})
+  1. **"Soviet Arms Transfers to Cuba, 1960-1961"** - Intelligence assessment detailing weapons shipments from USSR to Cuba including artillery, aircraft, and small arms. Notes Castro's request for defensive capabilities against possible US intervention. {{cite:r2key/path/document1}}
   
-  2. **"Khrushchev's Cuban Strategy, April 1962"** - ...
+  2. **"Khrushchev's Cuban Strategy, April 1962"** - ... {{cite:r2key/path/document2}}
   \`\`\`
 
 ### 2. Highlight Interesting Content
@@ -467,7 +467,7 @@ For each search query, follow this structure:
   
   > "The Soviet deployment of offensive missiles to Cuba appears to have been primarily motivated by a desire to rapidly alter the strategic balance rather than as a direct response to Jupiter missile deployments in Turkey."
   > 
-  > From "Khrushchev's Strategic Calculations" (Oct 1962) - [View Document](https://doc-viewer.ramus.network/{r2Key})
+  > From "Khrushchev's Strategic Calculations" (Oct 1962) {{cite:r2key/path/document3}}
   \`\`\`
 
 ### 3. Brief Analysis
@@ -481,9 +481,10 @@ For each search query, follow this structure:
   These documents show a consistent US intelligence focus on tracking weapons shipments to Cuba throughout 1962, though assessments of Soviet intentions varied significantly. Earlier documents reflect uncertainty about offensive capabilities, while later reports show growing concern about missile deployments.
   \`\`\`
 
-### 4. Document Access
-- Include a "[View Document](https://doc-viewer.ramus.network/{r2Key})" link after every document mention
-- Format the link consistently, ideally in parentheses after document title or at the end of summary
+### 4. Document Citations
+- Include a citation {{cite:r2Key}} after every document mention
+- Always include the full r2Key provided by the queryCollection tool
+- Do not add any other parameters to the citation - just the r2Key
 
 ### 5. No Results Cases
 - If no relevant documents are found, explicitly acknowledge this

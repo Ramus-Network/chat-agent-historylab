@@ -588,8 +588,160 @@ export default function Chat() {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Global document registry for consistent citation numbering across conversations
+  const documentRegistry = useMemo(() => {
+    return {
+      documents: new Map<string, { id: number, title: string }>(),
+      counter: 0,
+      registerDocument(r2Key: string, title?: string): number {
+        // Check if document already registered
+        if (this.documents.has(r2Key)) {
+          return this.documents.get(r2Key)!.id;
+        }
+        
+        // Register new document
+        const docId = ++this.counter;
+        this.documents.set(r2Key, { 
+          id: docId, 
+          title: title || `Document ${docId}` 
+        });
+        return docId;
+      },
+      getDocumentId(r2Key: string): number | null {
+        return this.documents.has(r2Key) ? this.documents.get(r2Key)!.id : null;
+      },
+      getDocumentUrl(r2Key: string): string {
+        return `https://doc-viewer.ramus.network/${r2Key}`;
+      },
+      getDocumentTitle(r2Key: string): string {
+        return this.documents.has(r2Key) ? this.documents.get(r2Key)!.title : `Document`;
+      }
+    };
+  }, []);
+  
+  // Process all messages to extract and register documents from tool responses
+  useEffect(() => {
+    // Skip if no messages
+    if (!agentMessages || agentMessages.length === 0) return;
+    
+    // Process all messages to find queryCollection results
+    agentMessages.forEach(message => {
+      if (message.role !== 'assistant' || !message.parts) return;
+      
+      message.parts.forEach(part => {
+        if (part.type !== 'tool-invocation') return;
+        
+        const toolInvocation = (part as any).toolInvocation;
+        if (toolInvocation?.toolName !== 'queryCollection' || toolInvocation?.state !== 'result') return;
+        
+        // Process queryCollection result
+        const result = toolInvocation.result;
+        if (!result || !result.documents || !Array.isArray(result.documents)) return;
+        
+        // Register all documents from the search results
+        result.documents.forEach((doc: any) => {
+          if (doc.file_info?.r2Key) {
+            const title = doc.file_info?.metadata?.title || doc.document_id || `Document`;
+            documentRegistry.registerDocument(doc.file_info.r2Key, title);
+          }
+        });
+      });
+    });
+  }, [agentMessages, documentRegistry]);
+
+  // Add global click handler for citations
+  useEffect(() => {
+    const handleGlobalCitationClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('citation')) {
+        const r2Key = target.getAttribute('data-r2key');
+        if (r2Key) {
+          window.open(documentRegistry.getDocumentUrl(r2Key), '_blank');
+        }
+      }
+    };
+    
+    // Add event listener to the document
+    document.addEventListener('click', handleGlobalCitationClick);
+    
+    // Clean up
+    return () => {
+      document.removeEventListener('click', handleGlobalCitationClick);
+    };
+  }, [documentRegistry]);
+
+  // Add citation styles to document head, update on status change
+  useEffect(() => {
+    // Base styles for the citation buttons
+    let citationStyles = `
+      .citation {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #6CA0D6;
+        color: white;
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 50%;
+        font-size: 0.7rem;
+        font-weight: 500;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        cursor: pointer;
+        margin: 0 0.125rem;
+        vertical-align: text-bottom;
+        position: relative;
+        top: -0.05rem;
+        transition: background-color 0.15s, transform 0.15s;
+        line-height: 1;
+        user-select: none;
+      }
+      .citation:active {
+        transform: scale(0.95);
+        background-color: #4a80b0;
+      }
+    `;
+    
+    // Add hover effect conditionally
+    const hoverStyles = status !== 'streaming' ? `
+      .citation:hover {
+        background-color: #5a90c0;
+        transform: scale(1.1);
+      }
+    ` : '';
+    citationStyles += hoverStyles;
+    
+    // Create or update style element
+    let styleElement = document.getElementById('citation-styles');
+    if (!styleElement) {
+      styleElement = document.createElement('style');
+      styleElement.id = 'citation-styles';
+      document.head.appendChild(styleElement);
+    }
+    styleElement.textContent = citationStyles;
+    
+    // Clean up function remains the same
+    return () => {
+      // Optional cleanup, maybe remove the style element if component unmounts entirely
+      // const styleToRemove = document.getElementById('citation-styles');
+      // if (styleToRemove) {
+      //   document.head.removeChild(styleToRemove);
+      // }
+    };
+  }, [status]); // Dependency array remains [status]
+
   // Render message content with styling and markdown support
   const renderMessageContent = (text: string, messageId: string) => {
+    // Process special citation codes: {{cite:r2Key}}
+    // Convert to custom span that will be parsed as HTML with rehypeRaw
+    const processedText = text.replace(
+      /{{cite:([^}]+)}}/g, 
+      (match, r2Key) => {
+        // Register document if not already registered
+        const docId = documentRegistry.registerDocument(r2Key);
+        return `<span class="citation" data-number="${docId}" data-r2key="${r2Key}" title="View source document ${docId}: ${documentRegistry.getDocumentTitle(r2Key)}">${docId}</span>`;
+      }
+    );
+
     return (
       <div className="whitespace-pre-wrap break-words text-gray-800 markdown-condensed">
         <ReactMarkdown
@@ -619,7 +771,7 @@ export default function Chat() {
             hr: ({node, ...props}) => <hr className="border-gray-300/80 my-1" {...props} />,
           }}
         >
-          {text}
+          {processedText}
         </ReactMarkdown>
       </div>
     );
@@ -668,13 +820,14 @@ export default function Chat() {
     const toolName = toolInvocation.toolName;
     
     // Internal component to handle query results state and rendering
-    const QueryCollectionResults = ({ resultData }: { resultData: any }) => {
-      const [showAllResults, setShowAllResults] = useState(false);
-      const RESULTS_TO_SHOW_INITIALLY = 3;
+    // Pass down the chat status to conditionally apply hover styles
+    const QueryCollectionResults = ({ resultData, chatStatus }: { resultData: any, chatStatus: string }) => {
+      // Removed showAllResults state and RESULTS_TO_SHOW_INITIALLY constant
+      const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
       
       let documents: any[] = [];
       let totalChunks = 0;
-      let status = 'unknown';
+      let localStatus = 'unknown'; // Renamed to avoid conflict with prop
       let isError = false;
       let errorMessage = 'An error occurred retrieving search results.';
 
@@ -685,9 +838,20 @@ export default function Chat() {
       else if ('documents' in resultData) {
         documents = resultData.documents || [];
         totalChunks = resultData.total_chunks || 0;
-        status = resultData.status || 'success';
+        localStatus = resultData.status || 'success';
       } 
       else { /* No documents or unknown format */ }
+
+      const copyDocumentCitation = (doc: any) => {
+        const r2Key = doc.file_info?.r2Key || '';
+        
+        if (r2Key) {
+          const citation = `{{cite:${r2Key}}}`;
+          navigator.clipboard.writeText(citation);
+          setCopiedDocId(doc.document_id);
+          setTimeout(() => setCopiedDocId(null), 2000);
+        }
+      };
 
       if (isError) {
         return (
@@ -707,45 +871,41 @@ export default function Chat() {
         );
       }
 
-      const resultsToShow = showAllResults ? documents.length : RESULTS_TO_SHOW_INITIALLY;
-      const hasMoreResults = documents.length > RESULTS_TO_SHOW_INITIALLY;
-
       return (
         <div className="bg-blue-50/70 p-3 border border-blue-200 rounded-md text-gray-800 shadow-sm">
           <div className="text-xs font-medium mb-2 text-blue-800">
             Found {documents.length} documents 
-            {status === 'partial_success' && <span className="text-amber-600 font-normal ml-1">(partial results)</span>}
+            {localStatus === 'partial_success' && <span className="text-amber-600 font-normal ml-1">(partial results)</span>}
           </div>
           <div className="flex flex-wrap gap-2">
-            {documents.slice(0, resultsToShow).map((doc: any, i: number) => (
-              <a
-                key={doc.document_id || i}
-                href={doc.file_info?.r2Key ? `https://doc-viewer.ramus.network/${doc.file_info.r2Key}` : '#'}
-                target={doc.file_info?.r2Key ? "_blank" : "_self"}
-                rel="noopener noreferrer"
-                className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium transition-colors shadow-sm ${
-                  doc.file_info?.r2Key 
-                    ? 'bg-white border border-blue-300 text-blue-800 hover:bg-blue-100 hover:border-blue-400 cursor-pointer' 
-                    : 'bg-gray-100 border border-gray-300 text-gray-500 cursor-default'
-                }`}
-                title={doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
-                onClick={(e) => { if (!doc.file_info?.r2Key) e.preventDefault(); }}
-              >
-                <FileText size={12} className={doc.file_info?.r2Key ? "text-blue-500" : "text-gray-400"} />
-                <span className="truncate max-w-[200px]">
-                  {doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
-                </span>
-              </a>
-            ))}
+            {/* Map over all documents directly */}
+            {documents.map((doc: any, i: number) => {
+              const baseClasses = "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium transition-colors shadow-sm";
+              const linkClasses = doc.file_info?.r2Key 
+                ? `bg-white border border-blue-300 text-blue-800 cursor-pointer ${chatStatus !== 'streaming' ? 'hover:bg-blue-100 hover:border-blue-400' : ''}` 
+                : 'bg-gray-100 border border-gray-300 text-gray-500 cursor-default';
+              
+              return (
+                <div key={doc.document_id || i} className="relative group">
+                  <a
+                    href={doc.file_info?.r2Key ? `https://doc-viewer.ramus.network/${doc.file_info.r2Key}` : '#'}
+                    target={doc.file_info?.r2Key ? "_blank" : "_self"}
+                    rel="noopener noreferrer"
+                    className={`${baseClasses} ${linkClasses}`}
+                    title={doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
+                    onClick={(e) => { if (!doc.file_info?.r2Key) e.preventDefault(); }}
+                  >
+                    <FileText size={12} className={doc.file_info?.r2Key ? "text-blue-500" : "text-gray-400"} />
+                    <span className="truncate max-w-[200px]">
+                      {doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
+                    </span>
+                  </a>
+                  {/* Copy citation button removed */}
+                </div>
+              );
+            })}
           </div>
-          {hasMoreResults && !showAllResults && (
-            <button
-              onClick={() => setShowAllResults(true)}
-              className="mt-2 text-xs text-blue-600 hover:underline"
-            >
-              Show {documents.length - RESULTS_TO_SHOW_INITIALLY} more results...
-            </button>
-          )}
+          {/* Show more button removed */}
         </div>
       );
     };
@@ -754,11 +914,16 @@ export default function Chat() {
     
     // Helper function to format date range string
     const formatDateRange = (args: any): string => {
-      const { 
-        authored_start_year_month, authored_end_year_month,
-        authored_start_year_month_day, authored_end_year_month_day
-      } = args || {};
+      // Check if args is defined before destructuring
+      if (!args) return "";
+      
+      // Define variables with explicit types and default values
+      const authored_start_year_month = args.authored_start_year_month as string | undefined;
+      const authored_end_year_month = args.authored_end_year_month as string | undefined;
+      const authored_start_year_month_day = args.authored_start_year_month_day as string | undefined;
+      const authored_end_year_month_day = args.authored_end_year_month_day as string | undefined;
 
+      // Assign to new variables for clarity
       const start_day = authored_start_year_month_day;
       const end_day = authored_end_year_month_day;
       const start_month = authored_start_year_month;
@@ -800,7 +965,8 @@ export default function Chat() {
       else if (toolInvocation.result && typeof toolInvocation.result === 'object') {
         return (
           <div key={`${messageId}-tool-results-${index}`} className="my-3">
-            <QueryCollectionResults resultData={toolInvocation.result} />
+            {/* Pass the main chat status down */}
+            <QueryCollectionResults resultData={toolInvocation.result} chatStatus={status} />
           </div>
         );
       }
