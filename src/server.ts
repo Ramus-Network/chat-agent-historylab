@@ -107,6 +107,10 @@ interface ConversationLog {
     timestamp: string;
     feedback?: 'like' | 'dislike' | null;
   }>;
+  documentClicks: Array<{
+    r2Key: string;
+    timestamp: string;
+  }>;
 }
 
 const COLLECTION_ID = '80650a98-fe49-429a-afbd-9dde66e2d02b'; // history-lab-1
@@ -198,7 +202,8 @@ export class Chat extends AIChatAgent<Env> {
         input: 0,
         output: 0
       },
-      messageObjects: []
+      messageObjects: [],
+      documentClicks: []
     };
     
     // Store the new log
@@ -510,8 +515,8 @@ If a search returns an error:
 - Clearly mark direct quotes with quotation marks and citation
 - State explicitly when information isn't found
 - Cite sources using the special citation format:
-  - {{cite:r2Key}} - Just include the r2Key path as the only parameter
-  - Example: {{cite:abc123/xyz789}}
+  - {{cite:r2Key}} - Just include the r2Key path as the only parameter. The r2Key is a path {user_id}/{collection_id}/{file_id}/{document_id}.txt. YOU MUST INCLUDE THE FULL PATH.
+  - Example: {{cite:0000000001/80650a98-fe49-429a-afbd-9dde66e2d02b/7972a973-0a5a-4358-91af-b63a6e39a63d/Clinton-16686_clinton.txt}}
   - This will be automatically converted to a numbered footnote in the UI
 
 ## 📋 STANDARDIZED DOCUMENT ANALYSIS & PRESENTATION
@@ -936,6 +941,68 @@ export default {
 
       } catch (error) {
         logError("fetch:/feedback", "Error processing feedback request", error);
+        let errorMessage = "Internal server error";
+        if (error instanceof SyntaxError) {
+            errorMessage = "Invalid JSON payload";
+            return new Response(JSON.stringify({ error: errorMessage }), { status: 400, headers: corsHeaders() });
+        } else if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        return new Response(JSON.stringify({ error: errorMessage }), { status: 500, headers: corsHeaders() });
+      }
+    }
+
+    // Document Click Tracking Endpoint
+    if (url.pathname === "/document-click" && request.method === "POST") {
+      try {
+        const { conversationId, r2Key } = await request.json() as { 
+          conversationId: string, 
+          r2Key: string
+        };
+        
+        if (!conversationId || !r2Key) {
+          logInfo("fetch:/document-click", "Missing required fields in document click request", { conversationId, r2Key });
+          return new Response(JSON.stringify({ error: "Missing required fields: conversationId, r2Key" }), { status: 400, headers: corsHeaders() });
+        }
+
+        // Decode conversation components
+        const { userId, collectionId, convoId } = decodeHashedComponents(conversationId);
+        const logId = `${userId}-${collectionId}-${convoId}`;
+
+        // Retrieve the conversation log
+        const logString = await env.CONVERSATION_LOGS.get(logId);
+        if (!logString) {
+          logError("fetch:/document-click", "Conversation log not found", null, { logId });
+          return new Response(JSON.stringify({ error: "Conversation log not found" }), { status: 404, headers: corsHeaders() });
+        }
+
+        const log: ConversationLog = JSON.parse(logString);
+
+        // Create the document click entry with just r2Key and timestamp
+        const clickEntry = {
+          r2Key,
+          timestamp: new Date().toISOString()
+        };
+
+        // Add the document click to the log
+        if (!log.documentClicks) {
+          log.documentClicks = [];
+        }
+        log.documentClicks.push(clickEntry);
+
+        // Update timestamp and save
+        log.updatedAt = new Date().toISOString();
+        await env.CONVERSATION_LOGS.put(logId, JSON.stringify(log));
+
+        logInfo("fetch:/document-click", "Document click recorded successfully", { 
+          logId, 
+          r2Key
+        });
+        
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders() });
+
+      } catch (error) {
+        logError("fetch:/document-click", "Error processing document click request", error);
         let errorMessage = "Internal server error";
         if (error instanceof SyntaxError) {
             errorMessage = "Invalid JSON payload";

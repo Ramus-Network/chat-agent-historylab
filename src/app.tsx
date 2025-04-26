@@ -659,6 +659,34 @@ export default function Chat() {
     });
   }, [agentMessages, documentRegistry]);
 
+  // Function to track document clicks with the server
+  const trackDocumentClick = async (r2Key: string) => {
+    try {
+      // console.log("Tracking document click for:", r2Key);
+      
+      // Construct the full URL for the document click endpoint
+      const clickUrl = `${window.location.origin}/document-click`;
+
+      // Send tracking request to server
+      const response = await fetch(clickUrl, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: conversationId,
+          r2Key
+        })
+      });
+
+      if (!response.ok) {
+        // Still open the document even if tracking fails, but log the error
+        console.error("Failed to track document click:", await response.text());
+      }
+    } catch (err) {
+      // Log error but don't block document opening on failure
+      console.error("Error tracking document click:", err);
+    }
+  };
+  
   // Add global click handler for citations
   useEffect(() => {
     const handleGlobalCitationClick = (e: MouseEvent) => {
@@ -666,6 +694,11 @@ export default function Chat() {
       if (target.classList.contains('citation')) {
         const r2Key = target.getAttribute('data-r2key');
         if (r2Key) {
+          // First track the click
+          // console.log("Tracking document click for:", r2Key);
+          trackDocumentClick(r2Key);
+          
+          // Then open the document in a new tab
           window.open(documentRegistry.getDocumentUrl(r2Key), '_blank');
         }
       }
@@ -678,7 +711,7 @@ export default function Chat() {
     return () => {
       document.removeEventListener('click', handleGlobalCitationClick);
     };
-  }, [documentRegistry]);
+  }, [documentRegistry, conversationId]);
 
   // Add citation styles to document head, update on status change
   useEffect(() => {
@@ -903,7 +936,15 @@ export default function Chat() {
                     rel="noopener noreferrer"
                     className={`${baseClasses} ${linkClasses}`}
                     title={doc.file_info?.metadata?.title || doc.document_id || 'Unknown Document'}
-                    onClick={(e) => { if (!doc.file_info?.r2Key) e.preventDefault(); }}
+                    onClick={(e) => { 
+                      if (!doc.file_info?.r2Key) {
+                        e.preventDefault();
+                        return;
+                      }
+                      
+                      // Track document click before opening
+                      trackDocumentClick(doc.file_info.r2Key);
+                    }}
                   >
                     <FileText size={12} className={doc.file_info?.r2Key ? "text-blue-500" : "text-gray-400"} />
                     <span className="truncate max-w-[200px]">
