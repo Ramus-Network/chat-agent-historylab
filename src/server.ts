@@ -73,6 +73,8 @@ interface ConversationLog {
       toolCallId: string;
       timestamp: string;
       query: string;
+      userMessageIndex: number;
+      userMessageId: string;
       dateFilters?: {
         authored_start_year_month?: string;
         authored_end_year_month?: string;
@@ -84,6 +86,12 @@ interface ConversationLog {
         best_score: number;
         chunk_ids: string[];
         file_id: string;
+        file_r2key: string;
+        metadata: {
+          title: string;
+          authored_date: string;
+          classification: string;
+        };
       }>;
     }>;
   };
@@ -91,7 +99,12 @@ interface ConversationLog {
     input: number;
     output: number;
   };
-  messageSamples: string[];
+  messageObjects: Array<{
+    index: number;
+    content: string;
+    timestamp: string;
+    id?: string; // Optional ID if available
+  }>;
 }
 
 const COLLECTION_ID = '80650a98-fe49-429a-afbd-9dde66e2d02b'; // history-lab-1
@@ -183,7 +196,7 @@ export class Chat extends AIChatAgent<Env> {
         input: 0,
         output: 0
       },
-      messageSamples: []
+      messageObjects: []
     };
     
     // Store the new log
@@ -602,6 +615,27 @@ For each search query, follow this structure:
               // Get the last assistant message to extract tool invocations
               const lastAssistantMessage = this.messages.findLast(m => m.role === 'assistant');
               
+              // Find the triggering user message
+              const lastUserMessageIndex = this.messages.length - 2; // Last user message before the assistant response
+              const lastUserMessage = this.messages[lastUserMessageIndex];
+              
+              // Extract and truncate the user message content for logging
+              const messageContent = lastUserMessage ? 
+                (typeof lastUserMessage.content === 'string' ? 
+                  lastUserMessage.content : 
+                  JSON.stringify(lastUserMessage.content)) 
+                : '';
+              const truncatedMessage = messageContent.length > 1000 ? 
+                messageContent.substring(0, 1000) + '...' : 
+                messageContent;
+              
+              // Add the user message to samples with its index for reference
+              const userMsgObj = {
+                index: lastUserMessageIndex,
+                content: truncatedMessage,
+                timestamp: new Date().toISOString()
+              };
+              
               // Extract query details from message parts instead of directly from toolInvocations
               if (lastAssistantMessage && Array.isArray(lastAssistantMessage.parts)) {
                 lastAssistantMessage.parts.forEach(part => {
@@ -609,7 +643,7 @@ For each search query, follow this structure:
                   if (part.type === 'tool-invocation' && part.toolInvocation?.toolName === 'queryCollection') {
                     const toolInvocation = part.toolInvocation;
                     const args = toolInvocation.args || {};
-
+                    
                     // Only process if the tool invocation has a result
                     if (toolInvocation.state === 'result') {
                       // Access the result from toolInvocation.result
@@ -620,6 +654,8 @@ For each search query, follow this structure:
                         toolCallId: toolInvocation.toolCallId || '',
                         timestamp: new Date().toISOString(),
                         query: args.query || '',
+                        userMessageIndex: lastUserMessageIndex, // Link to the user message that triggered this
+                        userMessageId: lastUserMessage?.id || '', // Store the actual message ID for direct reference
                         dateFilters: {
                           authored_start_year_month: args.authored_start_year_month,
                           authored_end_year_month: args.authored_end_year_month,
@@ -686,22 +722,11 @@ For each search query, follow this structure:
               }
               
               // Find the last user message to calculate input characters
-              const lastUserMessage = this.messages.findLast(m => m.role === 'user');
               const userInputChars = lastUserMessage ? 
                 (typeof lastUserMessage.content === 'string' ? 
                   lastUserMessage.content.length : 
                   JSON.stringify(lastUserMessage.content).length) 
                 : 0;
-              
-              // Extract and truncate the user message content for logging
-              const messageContent = lastUserMessage ? 
-                (typeof lastUserMessage.content === 'string' ? 
-                  lastUserMessage.content : 
-                  JSON.stringify(lastUserMessage.content)) 
-                : '';
-              const truncatedMessage = messageContent.length > 1000 ? 
-                messageContent.substring(0, 1000) + '...' : 
-                messageContent;
               
               // Calculate output characters using the existing lastAssistantMessage variable
               const assistantOutputChars = lastAssistantMessage ? 
@@ -734,7 +759,7 @@ For each search query, follow this structure:
                     input: this.conversationLog.characters.input + userInputChars,
                     output: this.conversationLog.characters.output + assistantOutputChars
                   },
-                  messageSamples: [...this.conversationLog.messageSamples, truncatedMessage]
+                  messageObjects: [...(this.conversationLog.messageObjects || []), userMsgObj]
                 });
               }
 
