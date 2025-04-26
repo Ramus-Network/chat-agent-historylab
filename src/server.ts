@@ -101,9 +101,11 @@ interface ConversationLog {
   };
   messageObjects: Array<{
     index: number;
+    role: 'user' | 'assistant';
+    id: string;
     content: string;
     timestamp: string;
-    id?: string; // Optional ID if available
+    feedback?: 'like' | 'dislike' | null;
   }>;
 }
 
@@ -612,30 +614,62 @@ For each search query, follow this structure:
               // Extract query details for logging
               const queryDetails: ConversationLog['queries']['details'] = [];
               
-              // Get the last assistant message to extract tool invocations
+              // Get the last assistant message to extract tool invocations and log content
               const lastAssistantMessage = this.messages.findLast(m => m.role === 'assistant');
+              const assistantMessageIndex = this.messages.length - 1; // Index of the last message (assistant)
               
               // Find the triggering user message
               const lastUserMessageIndex = this.messages.length - 2; // Last user message before the assistant response
               const lastUserMessage = this.messages[lastUserMessageIndex];
               
+              // Log all messages for debugging ID issues
+              logDebug("Chat.onChatMessage.onFinish", "Messages in this.messages array", { 
+                messageCount: this.messages.length,
+                messageIds: this.messages.map(m => ({ role: m.role, id: m.id, createdAt: m.createdAt }))
+              });
+              
               // Extract and truncate the user message content for logging
-              const messageContent = lastUserMessage ? 
+              const userMessageContent = lastUserMessage ? 
                 (typeof lastUserMessage.content === 'string' ? 
                   lastUserMessage.content : 
                   JSON.stringify(lastUserMessage.content)) 
                 : '';
-              const truncatedMessage = messageContent.length > 1000 ? 
-                messageContent.substring(0, 1000) + '...' : 
-                messageContent;
+              const truncatedUserMessage = userMessageContent.length > 1000 ? 
+                userMessageContent.substring(0, 1000) + '...' : 
+                userMessageContent;
               
-              // Add the user message to samples with its index for reference
-              const userMsgObj = {
+              // Create the user message object for logging
+              const userMsgObj: ConversationLog['messageObjects'][number] | null = lastUserMessage ? {
                 index: lastUserMessageIndex,
-                content: truncatedMessage,
-                timestamp: new Date().toISOString()
-              };
+                role: 'user',
+                id: lastUserMessage.id || `msg-${lastUserMessageIndex}`, // Use ID or generate one
+                content: truncatedUserMessage,
+                timestamp: new Date(lastUserMessage.createdAt ?? Date.now()).toISOString()
+              } : null;
               
+              // Extract and truncate the assistant message content for logging
+              const assistantMessageContent = lastAssistantMessage ?
+                (typeof lastAssistantMessage.content === 'string' ? 
+                  lastAssistantMessage.content : 
+                  JSON.stringify(lastAssistantMessage.content)) 
+                : '';
+              const truncatedAssistantMessage = assistantMessageContent.length > 4000 ? 
+                assistantMessageContent.substring(0, 4000) + '...' : 
+                assistantMessageContent;
+
+              // Create the assistant message object for logging
+              const assistantMsgObj: ConversationLog['messageObjects'][number] | null = lastAssistantMessage ? {
+                index: assistantMessageIndex,
+                role: 'assistant',
+                id: lastAssistantMessage.id,
+                content: truncatedAssistantMessage,
+                timestamp: new Date(lastAssistantMessage.createdAt ?? Date.now()).toISOString(),
+                feedback: null // Initialize feedback as null
+              } : null;
+
+              // Filter out null messages before adding to array
+              const newMessageObjects = [userMsgObj, assistantMsgObj].filter(Boolean) as ConversationLog['messageObjects'];
+
               // Extract query details from message parts instead of directly from toolInvocations
               if (lastAssistantMessage && Array.isArray(lastAssistantMessage.parts)) {
                 lastAssistantMessage.parts.forEach(part => {
@@ -759,17 +793,15 @@ For each search query, follow this structure:
                     input: this.conversationLog.characters.input + userInputChars,
                     output: this.conversationLog.characters.output + assistantOutputChars
                   },
-                  messageObjects: [...(this.conversationLog.messageObjects || []), userMsgObj]
+                  messageObjects: [...(this.conversationLog.messageObjects || []), ...newMessageObjects]
                 });
               }
 
-              // // Log the messages
-              // logInfo("Chat.onChatMessage.onFinish", "Messages", {
-              //   userId,
-              //   collectionId,
-              //   convoId,
-              //   messages: this.messages
-              // });
+              // Log the messages so we can verify the IDs being captured
+              logDebug("Chat.onChatMessage.onFinish", "Saved message objects", {
+                userMsgId: userMsgObj?.id,
+                assistantMsgId: assistantMsgObj?.id, 
+              });
               
               // Log minimal completion info as debug
               logDebug("Chat.onChatMessage.onFinish", "Stream finished", { 
@@ -807,7 +839,116 @@ For each search query, follow this structure:
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    logDebug("fetch", "Processing incoming request", { url: request.url });
+    const url = new URL(request.url);
+    logDebug("fetch", "Processing incoming request", { url: url.pathname, method: request.method });
+
+    // Handle CORS preflight requests (OPTIONS) globally
+    if (request.method === "OPTIONS") {
+      return handleOptions(request);
+    }
+
+    // Feedback Endpoint Logic
+    if (url.pathname === "/feedback" && request.method === "POST") {
+      try {
+        const { conversationId, messageId, messageIndex, feedback } = await request.json() as { 
+          conversationId: string, 
+          messageId?: string, 
+          messageIndex?: number,
+          feedback: 'like' | 'dislike' | null 
+        };
+        
+        if (!conversationId || (messageId === undefined && messageIndex === undefined) || feedback === undefined) {
+          logInfo("fetch:/feedback", "Missing required fields in feedback request", { conversationId, messageId, messageIndex, feedback });
+          return new Response(JSON.stringify({ error: "Missing required fields: conversationId, messageId/messageIndex, feedback" }), { status: 400, headers: corsHeaders() });
+        }
+
+        // Decode conversation components
+        const { userId, collectionId, convoId } = decodeHashedComponents(conversationId);
+        const logId = `${userId}-${collectionId}-${convoId}`;
+
+        // Retrieve the conversation log
+        const logString = await env.CONVERSATION_LOGS.get(logId);
+        if (!logString) {
+          logError("fetch:/feedback", "Conversation log not found", null, { logId });
+          return new Response(JSON.stringify({ error: "Conversation log not found" }), { status: 404, headers: corsHeaders() });
+        }
+
+        const log: ConversationLog = JSON.parse(logString);
+
+        // Find the message and update feedback
+        let messageUpdated = false;
+
+        // First try to update by message index if provided
+        if (messageIndex !== undefined) {
+          // Find assistant messages only
+          const assistantMessages = log.messageObjects.filter(msg => msg.role === 'assistant');
+          
+          // Check if the index is valid
+          if (messageIndex >= 0 && messageIndex < assistantMessages.length) {
+            const targetMessageId = assistantMessages[messageIndex].id;
+            
+            // Now update the actual message in the full array
+            log.messageObjects = log.messageObjects.map(msg => {
+              if (msg.id === targetMessageId && msg.role === 'assistant') {
+                msg.feedback = feedback;
+                messageUpdated = true;
+                logInfo("fetch:/feedback", "Found and updated message by index", { 
+                  index: messageIndex, 
+                  msgId: msg.id 
+                });
+              }
+              return msg;
+            });
+          } else {
+            logError("fetch:/feedback", "Invalid assistant message index", null, { 
+              messageIndex, 
+              totalAssistantMessages: assistantMessages.length 
+            });
+          }
+        }
+                
+        if (!messageUpdated) {
+          // Log detailed debug info but don't block the request
+          logError("fetch:/feedback", "Assistant message not found for feedback update", null, { 
+            logId, 
+            messageId,
+            messageIndex,
+            availableMessageIds: log.messageObjects
+              .filter(m => m.role === 'assistant')
+              .map((m, i) => ({ index: i, id: m.id }))
+          });
+          // Don't return error, just log it
+        }
+
+        // Update timestamp and save
+        log.updatedAt = new Date().toISOString();
+        await env.CONVERSATION_LOGS.put(logId, JSON.stringify(log));
+
+        logInfo("fetch:/feedback", "Feedback recorded successfully", { 
+          logId, 
+          messageId, 
+          messageIndex,
+          feedback,
+          updated: messageUpdated
+        });
+        
+        return new Response(JSON.stringify({ success: true, updated: messageUpdated }), { status: 200, headers: corsHeaders() });
+
+      } catch (error) {
+        logError("fetch:/feedback", "Error processing feedback request", error);
+        let errorMessage = "Internal server error";
+        if (error instanceof SyntaxError) {
+            errorMessage = "Invalid JSON payload";
+            return new Response(JSON.stringify({ error: errorMessage }), { status: 400, headers: corsHeaders() });
+        } else if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        return new Response(JSON.stringify({ error: errorMessage }), { status: 500, headers: corsHeaders() });
+      }
+    }
+
+    // Original Agent Routing Logic
+    logDebug("fetch", "Checking environment variables");
     if (!env.OPENAI_API_KEY) {
       logInfo("fetch", "OPENAI_API_KEY not set");
       console.error(
@@ -831,10 +972,51 @@ export default {
     }
     
     logDebug("fetch", "Routing agent request");
-    return (
-      // Route the request to our agent or return 404 if not found
-      (await routeAgentRequest(request, env)) ||
-      new Response("Not found", { status: 404 })
-    );
+    // Route the request to our agent or return 404 if not found
+    const agentResponse = await routeAgentRequest(request, env);
+    
+    if (!agentResponse) {
+      logError("fetch", "No response from routeAgentRequest", { request })
+      return new Response("Not found", { status: 404, headers: corsHeaders() })
+    }
+
+    // Add CORS headers to the agent response
+    const responseWithCors = new Response(agentResponse.body, agentResponse);
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      responseWithCors.headers.set(key, value);
+    });
+
+    return responseWithCors;
   },
 } satisfies ExportedHandler<Env>;
+
+// Helper function for CORS headers
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*', // Allow all origins (adjust in production)
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization', // Add any other headers your frontend sends
+  };
+}
+
+// Helper function to handle OPTIONS requests for CORS preflight
+function handleOptions(request: Request) {
+  // Ensure necessary headers are present for CORS preflight success
+  if (
+    request.headers.get('Origin') !== null &&
+    request.headers.get('Access-Control-Request-Method') !== null &&
+    request.headers.get('Access-Control-Request-Headers') !== null
+  ) {
+    // Respond with CORS headers
+    return new Response(null, {
+      headers: corsHeaders(),
+    });
+  } else {
+    // Handle standard OPTIONS request
+    return new Response(null, {
+      headers: {
+        Allow: 'GET, POST, OPTIONS',
+      },
+    });
+  }
+}

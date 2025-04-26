@@ -36,6 +36,8 @@ import {
   Settings,
   User,
   Bot,
+  ThumbsUp, // Added
+  ThumbsDown, // Added
 } from "lucide-react";
 
 // Collection ID constant (matches the server-side constant)
@@ -122,6 +124,9 @@ export default function Chat() {
   
   // Ref to store timeout ID
   const limboTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // State to track feedback for each message
+  const [feedbackState, setFeedbackState] = useState<Record<string, 'like' | 'dislike' | null>>({});
   
   // State to track padding space needed after user message
   const [paddingHeight, setPaddingHeight] = useState(0);
@@ -1171,13 +1176,45 @@ export default function Chat() {
   };
   
   // Render copy button for messages
-  const renderCopyButton = (message: Message) => {
+  const renderActionButtons = (message: Message) => {
+    const currentFeedback = feedbackState[message.id];
+
     return (
-      <div className="flex justify-end mt-2">
+      <div className="flex justify-end items-center mt-2 gap-2">
+        {/* Like Button */}
+        <button
+          onClick={() => handleFeedback(message.id, 'like')}
+          className={`inline-flex h-7 w-7 items-center justify-center border rounded-md transition-colors duration-150 ease-in-out cursor-pointer 
+            ${currentFeedback === 'like' 
+              ? 'bg-blue-100 border-blue-300 text-[#6CA0D6]' 
+              : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 hover:text-gray-700'}
+          `}
+          aria-label="Like this message"
+          title="Like this message"
+        >
+          <ThumbsUp className="h-3.5 w-3.5" />
+        </button>
+
+        {/* Dislike Button */}
+        <button
+          onClick={() => handleFeedback(message.id, 'dislike')}
+          className={`inline-flex h-7 w-7 items-center justify-center border rounded-md transition-colors duration-150 ease-in-out cursor-pointer 
+            ${currentFeedback === 'dislike' 
+              ? 'bg-red-100 border-red-300 text-red-600' 
+              : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 hover:text-gray-700'}
+          `}
+          aria-label="Dislike this message"
+          title="Dislike this message"
+        >
+          <ThumbsDown className="h-3.5 w-3.5" />
+        </button>
+
+        {/* Copy Button */}
         <button
           onClick={() => copyMessageContent(message)}
           className="inline-flex h-7 items-center justify-center border border-gray-300 bg-white text-gray-600 text-xs font-medium transition-colors hover:bg-gray-100 hover:text-gray-800 px-2 gap-1 rounded-md cursor-pointer"
           aria-label="Copy message content"
+          title="Copy message content"
         >
           {copiedMessageId === message.id ? (
             <>
@@ -1275,6 +1312,51 @@ export default function Chat() {
       window.removeEventListener('resize', handleResize);
     };
   }, [status, paddingHeight]);
+
+  // Function to handle feedback submission
+  const handleFeedback = async (messageId: string, feedbackType: 'like' | 'dislike') => {
+    const currentFeedback = feedbackState[messageId];
+    // If clicking the same button again, toggle it off (set to null)
+    // Otherwise, set to the new feedback type
+    const newFeedback = currentFeedback === feedbackType ? null : feedbackType;
+
+    // Optimistically update UI
+    setFeedbackState(prev => ({ ...prev, [messageId]: newFeedback }));
+
+    try {
+      // Find the index of this assistant message among all assistant messages
+      const assistantMessages = agentMessages.filter(msg => msg.role === 'assistant');
+      const messageIndex = assistantMessages.findIndex(msg => msg.id === messageId);
+      
+      // Construct the full URL for the feedback endpoint
+      // Use window.location.origin to ensure it works correctly regardless of deployment
+      const feedbackUrl = `${window.location.origin}/feedback`;
+
+      const response = await fetch(feedbackUrl, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: conversationId, // The hashed ID from state
+          messageId: messageId,
+          messageIndex: messageIndex >= 0 ? messageIndex : undefined, // Only include if found
+          feedback: newFeedback // Send null if toggling off
+        })
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text(); // Get error details from backend
+        throw new Error(`Feedback API failed: ${response.status} ${response.statusText} - ${errorBody}`);
+      }
+      console.log(`Feedback ${newFeedback !== null ? newFeedback : 'cleared'} submitted for message ${messageId} (index: ${messageIndex})`);
+      // Optional: Handle success confirmation? Usually not needed.
+    } catch (error) {
+      console.error("Failed to submit feedback:", error);
+      // Revert optimistic update on error
+      setFeedbackState(prev => ({ ...prev, [messageId]: currentFeedback }));
+      // Optional: Show error message to user (e.g., using a toast notification library)
+      alert(`Failed to save feedback: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
 
   // Render the chat interface
   return (
@@ -1441,7 +1523,7 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                       const showAvatar = index === 0 || agentMessages[index - 1]?.role !== m.role;
                       const showRole = showAvatar && !isUser;
                       const isLastMessage = index === agentMessages.length - 1;
-                      const shouldShowCopyButton = !isUser && (!isLastMessage || (isLastMessage && status === "ready"));
+                      const showActionButtons = !isUser && (!isLastMessage || (isLastMessage && status === "ready"));
 
                       return (
                         <div
@@ -1527,7 +1609,7 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                                       return null;
                                     })}
                                     
-                                    {shouldShowCopyButton && renderCopyButton(m)}
+                                    {showActionButtons && renderActionButtons(m)}
                                   </>
                                 )}
                               </div>
