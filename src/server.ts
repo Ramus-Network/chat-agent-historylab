@@ -69,6 +69,23 @@ interface ConversationLog {
     total: number;
     withToolCalls: number;
     withoutToolCalls: number;
+    details: Array<{
+      toolCallId: string;
+      timestamp: string;
+      query: string;
+      dateFilters?: {
+        authored_start_year_month?: string;
+        authored_end_year_month?: string;
+        authored_start_year_month_day?: string;
+        authored_end_year_month_day?: string;
+      };
+      documentResults?: Array<{
+        doc_id: string;
+        best_score: number;
+        chunk_ids: string[];
+        file_id: string;
+      }>;
+    }>;
   };
   characters: {
     input: number;
@@ -159,7 +176,8 @@ export class Chat extends AIChatAgent<Env> {
       queries: {
         total: 0,
         withToolCalls: 0,
-        withoutToolCalls: 0
+        withoutToolCalls: 0,
+        details: []
       },
       characters: {
         input: 0,
@@ -578,6 +596,95 @@ For each search query, follow this structure:
                 return count;
               }, 0);
               
+              // Extract query details for logging
+              const queryDetails: ConversationLog['queries']['details'] = [];
+              
+              // Get the last assistant message to extract tool invocations
+              const lastAssistantMessage = this.messages.findLast(m => m.role === 'assistant');
+              
+              // Extract query details from message parts instead of directly from toolInvocations
+              if (lastAssistantMessage && Array.isArray(lastAssistantMessage.parts)) {
+                lastAssistantMessage.parts.forEach(part => {
+                  // Check if the part is a tool invocation for 'queryCollection'
+                  if (part.type === 'tool-invocation' && part.toolInvocation?.toolName === 'queryCollection') {
+                    const toolInvocation = part.toolInvocation;
+                    const args = toolInvocation.args || {};
+
+                    // Only process if the tool invocation has a result
+                    if (toolInvocation.state === 'result') {
+                      // Access the result from toolInvocation.result
+                      const result = toolInvocation.result || {}; // Use {} as default if result is null/undefined
+                      
+                      // Create a record of this query
+                      const queryDetail = {
+                        toolCallId: toolInvocation.toolCallId || '',
+                        timestamp: new Date().toISOString(),
+                        query: args.query || '',
+                        dateFilters: {
+                          authored_start_year_month: args.authored_start_year_month,
+                          authored_end_year_month: args.authored_end_year_month,
+                          authored_start_year_month_day: args.authored_start_year_month_day,
+                          authored_end_year_month_day: args.authored_end_year_month_day,
+                        },
+                        documentResults: [] // Initialize as empty array
+                      };
+                      
+                      // Extract document results if available and status is 'success'
+                      if (result.status === 'success' && Array.isArray(result.documents)) {
+                        queryDetail.documentResults = result.documents.map((doc: any) => {
+                          // Extract chunk IDs, scores, and truncated texts from the document's chunks
+                          const chunkIds: string[] = [];
+                          const chunkScores: number[] = [];
+                          const chunkTexts: string[] = [];
+                          
+                          if (doc.chunks && Array.isArray(doc.chunks)) {
+                            doc.chunks.forEach((chunk: any) => {
+                              if (chunk.id) {
+                                chunkIds.push(chunk.id);
+                                
+                                // Capture score for each chunk if available
+                                if (typeof chunk.score === 'number') {
+                                  chunkScores.push(chunk.score);
+                                }
+                                
+                                // Store the first 50 characters of text for context if available
+                                if (chunk.text && typeof chunk.text === 'string') {
+                                  const truncatedText = chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : '');
+                                  chunkTexts.push(truncatedText);
+                                }
+                              }
+                            });
+                          }
+                          
+                          // Include more metadata from the document and file_info for better analysis
+                          return {
+                            doc_id: doc.file_info?.metadata?.doc_id || '', // Document ID like "Clinton-82559"
+                            best_score: doc.best_score || 0,
+                            chunk_ids: chunkIds,
+                            chunk_scores: chunkScores, // Include chunk scores
+                            // chunk_texts: chunkTexts, // Optionally include truncated texts for debugging
+                            file_id: doc.file_info?.id || '', // File ID (UUID)
+                            file_r2key: doc.file_info?.r2Key || '', // The R2 key path
+                            metadata: { // Extract relevant metadata from file_info.metadata
+                              title: doc.file_info?.metadata?.title || '',
+                              authored_date: doc.file_info?.metadata?.authored || doc.file_info?.metadata?.date || '', // Check multiple fields for date
+                              classification: doc.file_info?.metadata?.classification || ''
+                              // Removed document_type as it's actually the document_id and now properly set above
+                            }
+                          };
+                        });
+                      } else if (result.status !== 'success') {
+                        logInfo("Chat.onChatMessage.onFinish", "Query Collection tool did not succeed", { toolCallId: toolInvocation.toolCallId, status: result.status });
+                      }
+                      
+                      queryDetails.push(queryDetail);
+                    } else {
+                       logDebug("Chat.onChatMessage.onFinish", "Skipping tool invocation part without result state", { toolCallId: toolInvocation.toolCallId, state: toolInvocation.state });
+                    }
+                  }
+                });
+              }
+              
               // Find the last user message to calculate input characters
               const lastUserMessage = this.messages.findLast(m => m.role === 'user');
               const userInputChars = lastUserMessage ? 
@@ -596,8 +703,7 @@ For each search query, follow this structure:
                 messageContent.substring(0, 1000) + '...' : 
                 messageContent;
               
-              // Find the last assistant message to calculate output characters
-              const lastAssistantMessage = this.messages.findLast(m => m.role === 'assistant');
+              // Calculate output characters using the existing lastAssistantMessage variable
               const assistantOutputChars = lastAssistantMessage ? 
                 (typeof lastAssistantMessage.content === 'string' ? 
                   lastAssistantMessage.content.length : 
@@ -621,7 +727,8 @@ For each search query, follow this structure:
                   queries: {
                     total: this.conversationLog.queries.total + 1,
                     withToolCalls: this.conversationLog.queries.withToolCalls + (queryHadToolCalls ? 1 : 0),
-                    withoutToolCalls: this.conversationLog.queries.withoutToolCalls + (queryHadToolCalls ? 0 : 1)
+                    withoutToolCalls: this.conversationLog.queries.withoutToolCalls + (queryHadToolCalls ? 0 : 1),
+                    details: [...this.conversationLog.queries.details, ...queryDetails]
                   },
                   characters: {
                     input: this.conversationLog.characters.input + userInputChars,
@@ -631,13 +738,13 @@ For each search query, follow this structure:
                 });
               }
 
-              // Log the messages
-              logInfo("Chat.onChatMessage.onFinish", "Messages", {
-                userId,
-                collectionId,
-                convoId,
-                messages: this.messages
-              });
+              // // Log the messages
+              // logInfo("Chat.onChatMessage.onFinish", "Messages", {
+              //   userId,
+              //   collectionId,
+              //   convoId,
+              //   messages: this.messages
+              // });
               
               // Log minimal completion info as debug
               logDebug("Chat.onChatMessage.onFinish", "Stream finished", { 

@@ -251,8 +251,13 @@ export default function Chat() {
         clearTimeout(limboTimeoutRef.current);
         limboTimeoutRef.current = null;
       }
+
+      // Log messages structure for debugging when not streaming
+      if (status === "ready" || status === "error") {
+        console.log('Debug - Messages structure:', agentMessages);
+      }
     }
-  }, [status]);
+  }, [status, agentMessages]);
 
   // Wrapper for handleAgentSubmit to set local submission state and start timeout
   const handleSubmit = (e: React.FormEvent) => {
