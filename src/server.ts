@@ -523,10 +523,10 @@ If a search returns an error:
 
 For each search query, follow this structure:
 
-### 1. Document List & Summaries
+### 1. Document Summaries
 - Present documents in a clearly organized list format
 - Include the **document title** (not just ID) for each result
-- Provide a 1-2 sentence summary of each document's content
+- Provide a 1-2 sentence summary of each document's content (if you haven't summarize this document already in a previous query)
 - Example:
   \`\`\`
   **Documents found (3):**
@@ -536,7 +536,7 @@ For each search query, follow this structure:
   2. **"Khrushchev's Cuban Strategy, April 1962"** - ... {{cite:r2key/path/document2}}
   \`\`\`
 
-### 2. Highlight Interesting Content
+### 2. Findings
 - For each query, identify at least one interesting or surprising quote/finding
 - If nothing interesting is found, explicitly state this
 - Present quotes in block quote format for visual distinction
@@ -550,13 +550,13 @@ For each search query, follow this structure:
   > From "Khrushchev's Strategic Calculations" (Oct 1962) {{cite:r2key/path/document3}}
   \`\`\`
 
-### 3. Brief Analysis
+### 3. Synthesis
 - Provide a brief (2-4 sentence) analysis of what the documents collectively reveal
 - Maintain neutrality and avoid definitive historical judgments
 - Focus on patterns, contradictions, or limitations in the documents
 - Example:
   \`\`\`
-  **Analysis:**
+  **Conclusion:**
   
   These documents show a consistent US intelligence focus on tracking weapons shipments to Cuba throughout 1962, though assessments of Soviet intentions varied significantly. Earlier documents reflect uncertainty about offensive capabilities, while later reports show growing concern about missile deployments.
   \`\`\`
@@ -705,7 +705,7 @@ For each search query, follow this structure:
                       };
                       
                       // Extract document results if available and status is 'success'
-                      if (result.status === 'success' && Array.isArray(result.documents)) {
+                      if (result.status === 'success' || result.status === 'partial_success' && Array.isArray(result.documents)) {
                         queryDetail.documentResults = result.documents.map((doc: any) => {
                           // Extract chunk IDs, scores, and truncated texts from the document's chunks
                           const chunkIds: string[] = [];
