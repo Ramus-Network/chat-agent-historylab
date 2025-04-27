@@ -257,10 +257,10 @@ export default function Chat() {
         limboTimeoutRef.current = null;
       }
 
-      // Log messages structure for debugging when not streaming
-      if (status === "ready" || status === "error") {
-        console.log('Debug - Messages structure:', agentMessages);
-      }
+      // // Log messages structure for debugging when not streaming
+      // if (status === "ready" || status === "error") {
+      //   console.log('Debug - Messages structure:', agentMessages);
+      // }
     }
   }, [status, agentMessages]);
 
@@ -1388,7 +1388,7 @@ export default function Chat() {
         const errorBody = await response.text(); // Get error details from backend
         throw new Error(`Feedback API failed: ${response.status} ${response.statusText} - ${errorBody}`);
       }
-      console.log(`Feedback ${newFeedback !== null ? newFeedback : 'cleared'} submitted for message ${messageId} (index: ${messageIndex})`);
+      // console.log(`Feedback ${newFeedback !== null ? newFeedback : 'cleared'} submitted for message ${messageId} (index: ${messageIndex})`);
       // Optional: Handle success confirmation? Usually not needed.
     } catch (error) {
       console.error("Failed to submit feedback:", error);
@@ -1675,7 +1675,7 @@ export default function Chat() {
                     className="inline-flex h-8 items-center justify-center rounded-md border border-gray-300 bg-white text-xs font-medium ring-offset-white transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6CA0D6]/50 focus-visible:ring-offset-1 px-2 text-gray-700 cursor-pointer"
                   >
                     <ExternalLink className="h-3.5 w-3.5 icon-visible mr-1 text-gray-500" />
-                    <span>NEW CONV</span>                  
+                    <span>NEW CONV</span>
                   </button>
                 </div>
               </div>
