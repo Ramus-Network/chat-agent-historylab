@@ -1720,6 +1720,9 @@ export default function Chat() {
     return shuffled.slice(0, count);
   };
 
+  // Memoize the random queries so they only get randomized on initial load
+  const randomizedQueries = useMemo(() => getRandomQueries(exampleQueries), []);
+
   // Render the chat interface
   return (
     <div className="flex min-h-screen w-full flex-col bg-white text-gray-800 font-sans antialiased transition-all pb-0 selection:bg-[#6CA0D6] selection:text-white">
@@ -1802,7 +1805,7 @@ An AI assistant for exploring declassified government documents, diplomatic cabl
                     <div className="mt-6">
                       <h5 className="font-sans text-gray-500 mb-3 text-left text-xs tracking-wider">TRY AN EXAMPLE QUERY:</h5>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {getRandomQueries(exampleQueries).map((item, index) => (
+                        {randomizedQueries.map((item, index) => (
                           <button
                             key={index}
                             onClick={() => {

@@ -314,7 +314,7 @@ export class Chat extends AIChatAgent<Env> {
             const googleAI = createGoogleGenerativeAI({
               apiKey: this.env.GOOGLE_GENERATIVE_AI_API_KEY
             });
-            model = googleAI("models/gemini-2.0-flash-exp");
+            model = googleAI("models/gemini-2.0-flash");
           } else {
             logInfo("Chat.onChatMessage", "Initializing OpenAI client");                  
               
