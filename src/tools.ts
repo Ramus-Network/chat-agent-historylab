@@ -109,7 +109,7 @@ const queryCollection = tool({
       const agent = getAgent();
       const vectorizeSearch = agent.getVectorizeSearch();
 
-      const k = 7;
+      const k = 5;
       
       // Build filters for the search
       const filters: Record<string, any> = {};
@@ -182,7 +182,7 @@ const queryCollection = tool({
       logDebug("queryCollection", `Search request: {
         queries: "${query}",
         collection_id: "${finalCollectionId}",
-        topK: 10,
+        topK: ${k},
         filters: ${JSON.stringify(filters)}
       }`);
       

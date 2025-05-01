@@ -831,7 +831,11 @@ For each search query, follow this structure:
 
           logDebug("Chat.onChatMessage", "Merging AI response stream with tool outputs");
           // Merge the AI response stream with tool execution outputs
-          result.mergeIntoDataStream(dataStream);
+          try {
+            result.mergeIntoDataStream(dataStream);
+          } catch (error) {
+            logError("Chat.onChatMessage", "Error merging AI response stream with tool outputs", error);
+          }
         },
       });
 
@@ -863,6 +867,10 @@ export default {
     // Handle CORS preflight requests (OPTIONS) globally
     if (request.method === "OPTIONS") {
       return handleOptions(request);
+    }
+
+    if (url.pathname === "/ping") {
+      return new Response("pong", { status: 200, headers: corsHeaders() });
     }
 
     // Feedback Endpoint Logic
@@ -1053,20 +1061,11 @@ export default {
     
     logDebug("fetch", "Routing agent request");
     // Route the request to our agent or return 404 if not found
-    const agentResponse = await routeAgentRequest(request, env);
-    
-    if (!agentResponse) {
-      logError("fetch", "No response from routeAgentRequest", { request })
-      return new Response("Not found", { status: 404, headers: corsHeaders() })
-    }
-
-    // Add CORS headers to the agent response
-    const responseWithCors = new Response(agentResponse.body, agentResponse);
-    Object.entries(corsHeaders()).forEach(([key, value]) => {
-      responseWithCors.headers.set(key, value);
-    });
-
-    return responseWithCors;
+    return (
+      // Route the request to our agent or return 404 if not found
+      (await routeAgentRequest(request, env)) ||
+      new Response("Not found", { status: 404 })
+    );
   },
 } satisfies ExportedHandler<Env>;
 
