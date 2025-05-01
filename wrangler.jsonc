@@ -7,7 +7,7 @@
 	// Make sure this is history-lab-chat-agent-3 for deployment and have the route uncommented
   "name": "history-lab-chat-agent-2",
   // "name": "history-lab-chat-agent-3",
-	"main": "src/server.ts",
+	"main": "src/server/index.ts",
 	"compatibility_date": "2025-02-04",
 	"compatibility_flags": [
 		"nodejs_compat"
