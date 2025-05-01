@@ -11,6 +11,7 @@ import ExampleQueries from './ExampleQueries';
 import { useDocumentRegistry } from '../documents/DocumentRegistry';
 import { useConversation } from '../../hooks/useConversation';
 import { useFeedback } from '../../hooks/useFeedback';
+import { useAuth } from '../../hooks/useAuth';
 import { exportConversation } from '../../utils/exportConversation';
 
 // Response timeout in milliseconds (5 seconds)
@@ -47,6 +48,9 @@ const ChatContainer: React.FC = () => {
   
   // Ref for the input container to measure its position
   const inputContainerRef = useRef<HTMLDivElement>(null);
+
+  // Get authentication context
+  const { user, isAuthenticated } = useAuth();
 
   // Get conversation management hooks
   const {
@@ -170,13 +174,27 @@ const ChatContainer: React.FC = () => {
       }
     }, RESPONSE_TIMEOUT);
     
-    handleAgentSubmit(e, {
-      data: {
-        annotations: {
-          hello: "world",
-        },
+    // Prepare message metadata with base annotations
+    const metadata: Record<string, any> = {
+      annotations: {
+        hello: "world",
       },
-    });
+    };
+    
+    // Add authenticated user information if available
+    if (isAuthenticated && user) {
+      metadata.authUser = {
+        email: user.email,
+        name: user.name || '',
+        institution: user.institution || '',
+        position: user.position || '',
+      };
+    }
+    
+    // Pass user ID from conversation hook (which now uses auth UUID when available)
+    metadata.userId = userId;
+
+    handleAgentSubmit(e, { data: metadata });
 
     // Scroll down after submission, but position the new user message at the top
     setTimeout(() => {

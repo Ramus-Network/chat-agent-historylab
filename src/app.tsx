@@ -1,5 +1,10 @@
 // app.tsx
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ChatContainer from './components/chat/ChatContainer';
+import { AuthProvider } from './hooks/useAuth';
+import AuthGuard from './components/auth/AuthGuard';
+import LoginScreen from './components/auth/LoginScreen';
 
 // Add custom scrollbar styles
 const style = document.createElement('style');
@@ -28,5 +33,20 @@ style.textContent = `
 document.head.appendChild(style);
 
 export default function Chat() {
-  return <ChatContainer />;
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route 
+            path="/" 
+            element={
+              <AuthGuard fallback={<LoginScreen />}>
+                <ChatContainer />
+              </AuthGuard>
+            } 
+          />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
 }

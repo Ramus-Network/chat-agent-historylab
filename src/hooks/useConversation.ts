@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { COLLECTION_ID, hashComponents, decodeHashedComponents, generateUserId, generateConversationId } from '../utils/hash';
+import { useAuth, AUTH_COOKIE_NAME } from './useAuth';
 
 type ConversationHookReturn = {
   userId: string;
@@ -14,10 +15,21 @@ type ConversationHookReturn = {
  * Handles URL parameters, history API, and sharing functionality
  */
 export function useConversation(): ConversationHookReturn {
+  const { isAuthenticated, user } = useAuth();
+
   // Get or create userId from cookies
   const [userId, setUserId] = useState<string>(() => {
-    // Try to get userId from cookies
+    // First try to get the authenticated session cookie
     const cookies = document.cookie.split(';').map(c => c.trim());
+    
+    // Check for auth session cookie first
+    const authCookie = cookies.find(c => c.startsWith(`${AUTH_COOKIE_NAME}=`));
+    if (authCookie) {
+      // Use the authenticated user's UUID as userId
+      return authCookie.split('=')[1];
+    }
+    
+    // If not authenticated, fall back to the existing user ID system
     const userIdCookie = cookies.find(c => c.startsWith('historylab_user_id='));
     
     if (userIdCookie) {
@@ -34,6 +46,20 @@ export function useConversation(): ConversationHookReturn {
     
     return newUserId;
   });
+  
+  // Update userId if the authentication state changes
+  useEffect(() => {
+    // When a user logs in, update the userId to match their authenticated ID
+    const cookies = document.cookie.split(';').map(c => c.trim());
+    const authCookie = cookies.find(c => c.startsWith(`${AUTH_COOKIE_NAME}=`));
+    
+    if (isAuthenticated && authCookie) {
+      const authUserId = authCookie.split('=')[1];
+      if (authUserId !== userId) {
+        setUserId(authUserId);
+      }
+    }
+  }, [isAuthenticated, userId]);
   
   // State for conversation ID (from URL query parameter or newly generated)
   const [conversationId, setConversationId] = useState(() => {

@@ -5,6 +5,7 @@ import { type Env } from "./types";
 import { logError } from "../shared";
 import { handleFeedback } from "./handlers/feedback-handler";
 import { handleDocumentClick } from "./handlers/document-handler";
+import { handleAuthCallback } from "./handlers/auth-handler";
 import { routeAgentRequest } from "agents-sdk";
 
 /**
@@ -25,6 +26,11 @@ export default {
 
     if (url.pathname === "/document-click") {
       return handleDocumentClick(request, env);
+    }
+
+    // Handle authentication callback
+    if (url.pathname === "/auth-callback") {
+      return handleAuthCallback(request, env);
     }
 
     return (
