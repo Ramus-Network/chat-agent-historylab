@@ -1,19 +1,23 @@
 import React from 'react';
-import { useAuth, AUTH_COOKIE_NAME } from '../../hooks/useAuth';
+import { useAuth } from '../../hooks/useAuth';
+import { AUTH_CONFIG } from '../../config';
 
 const LoginButton: React.FC = () => {
   const { isAuthenticated, isLoading, user, login, logout } = useAuth();
 
-  // Function to check if auth cookie exists
-  const checkAuthCookie = (): string => {
-    const cookies = document.cookie.split(';').map(cookie => cookie.trim());
-    const authCookie = cookies.find(cookie => cookie.startsWith(`${AUTH_COOKIE_NAME}=`));
+  // Function to check if auth token exists
+  const checkAuthToken = (): string => {
+    const token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
     
-    if (authCookie) {
-      const value = authCookie.split('=')[1];
-      return `Cookie exists: ${value.substring(0, 6)}...`;
+    if (token) {
+      try {
+        const tokenData = JSON.parse(atob(token));
+        return `Token exists: ${tokenData.email ? tokenData.email.substring(0, 6) : ''}...`;
+      } catch (e) {
+        return 'Invalid token';
+      }
     }
-    return 'No auth cookie';
+    return 'No auth token';
   };
 
   if (isLoading) {
@@ -27,7 +31,7 @@ const LoginButton: React.FC = () => {
   if (isAuthenticated && user) {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-600 truncate max-w-[150px]" title={`${user.email} - ${checkAuthCookie()}`}>
+        <span className="text-xs text-gray-600 truncate max-w-[150px]" title={`${user.email} - ${checkAuthToken()}`}>
           {user.email}
         </span>
         <button
@@ -42,8 +46,8 @@ const LoginButton: React.FC = () => {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-600 hidden sm:inline" title={checkAuthCookie()}>
-        {checkAuthCookie()}
+      <span className="text-xs text-gray-600 hidden sm:inline" title={checkAuthToken()}>
+        {checkAuthToken()}
       </span>
       <button
         onClick={login}

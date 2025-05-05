@@ -12,6 +12,7 @@ import { useDocumentRegistry } from '../documents/DocumentRegistry';
 import { useConversation } from '../../hooks/useConversation';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useAuth } from '../../hooks/useAuth';
+import { AUTH_CONFIG } from '../../config';
 import { exportConversation } from '../../utils/exportConversation';
 
 // Response timeout in milliseconds (5 seconds)
@@ -189,6 +190,14 @@ const ChatContainer: React.FC = () => {
         institution: user.institution || '',
         position: user.position || '',
       };
+      
+      // Add JWT token from sessionStorage to headers if available
+      const token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+      if (token) {
+        metadata.headers = {
+          Authorization: `Bearer ${token}`
+        };
+      }
     }
     
     // Pass user ID from conversation hook (which now uses auth UUID when available)

@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { AUTH_CONFIG } from '../config';
 
-// Export the auth cookie name for use in other modules
-export const AUTH_COOKIE_NAME = '__hl_session';
+// Token storage key
+export const AUTH_TOKEN_KEY = AUTH_CONFIG.TOKEN_KEY;
 
 // Retry delay for failed auth checks (in milliseconds)
 const AUTH_RETRY_DELAY = 10000; // 10 seconds
@@ -36,36 +37,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const lastAuthCheck = useRef<number>(0);
   const authRetryTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const authUrl = 'https://auth.ramus.network';
+  const authUrl = AUTH_CONFIG.AUTH_URL;
 
-  const login = () => {
-    // Get the current app URL for the redirect
-    const currentUrl = window.location.origin;
-    const callbackUrl = `${currentUrl}/auth-callback`;
+  // Function to generate PKCE code verifier and challenge
+  const generatePKCE = async () => {
+    // Create a code verifier (random UUIDs)
+    const codeVerifier = crypto.randomUUID() + crypto.randomUUID();
     
-    // Build the login URL with redirect parameter
-    const loginUrl = `${authUrl}/login?redirect_uri=${encodeURIComponent(callbackUrl)}`;
+    // Create code challenge (SHA-256 hash of verifier)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(codeVerifier);
+    const digest = await crypto.subtle.digest('SHA-256', data);
     
-    console.log('Initiating login redirect to:', loginUrl);
-    window.location.href = loginUrl;
+    // Base64url encode the challenge
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    
+    return { codeVerifier, codeChallenge };
   };
 
-  const logout = () => {
-    // Get the current app URL for the redirect
-    const currentUrl = window.location.origin;
-    
-    // Build the logout URL with redirect parameter
-    const logoutUrl = `${authUrl}/logout?redirect_uri=${encodeURIComponent(currentUrl)}`;
-    
-    console.log('Initiating logout redirect to:', logoutUrl);
-    
-    // Clear the local cookie too when logging out
-    document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0`;
-    
-    window.location.href = logoutUrl;
-  };
-
-  const checkAuth = async (): Promise<boolean> => {
+  // Wrap checkAuth in useCallback
+  const checkAuth = useCallback(async (): Promise<boolean> => {
     // If already checking auth, don't start another check
     if (isCheckingAuth.current) {
       console.log('Auth check already in progress, skipping this request');
@@ -75,9 +69,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Check if we should throttle requests
     const now = Date.now();
     const timeSinceLastCheck = now - lastAuthCheck.current;
-    if (timeSinceLastCheck < AUTH_RETRY_DELAY && lastAuthCheck.current > 0) {
+    // Allow check if not authenticated, even if throttled, to ensure login state propagates quickly
+    if (!isAuthenticated && timeSinceLastCheck < AUTH_RETRY_DELAY && lastAuthCheck.current > 0) {
+      console.log(`Auth check throttled but allowing because user is not authenticated.`);
+    } else if (isAuthenticated && timeSinceLastCheck < AUTH_RETRY_DELAY && lastAuthCheck.current > 0) {
       console.log(`Auth check throttled (${timeSinceLastCheck}ms < ${AUTH_RETRY_DELAY}ms), reusing previous state:`, isAuthenticated);
-      return isAuthenticated;
+      return isAuthenticated; // Only return early if already authenticated and throttled
     }
 
     // Mark that we're starting a check and update last check time
@@ -87,106 +84,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setIsLoading(true);
       
-      // Log all cookies for debugging
-      console.log('Cookies before auth check:', document.cookie);
+      // Get token from localStorage
+      const token = localStorage.getItem(AUTH_TOKEN_KEY);
       
-      // First, check for local cookie before making a network request
-      const cookies = document.cookie.split(';').map(c => c.trim());
-      const authCookie = cookies.find(c => c.startsWith(`${AUTH_COOKIE_NAME}=`));
-      
-      if (!authCookie) {
-        console.log('No auth cookie found, skipping auth check');
+      if (!token) {
+        console.log('No auth token found in localStorage');
         setUser(null);
         setIsAuthenticated(false);
-        setIsLoading(false);
-        isCheckingAuth.current = false;
-        return false;
-      }
-      
-      console.log('Auth cookie found:', authCookie);
-      
-      // Get the session value from the cookie
-      const sessionId = authCookie.split('=')[1];
-      
-      // At this point we have a local cookie, let's try to verify it with the auth server
-      // Use the session in the URL for more reliable cross-domain transfer
-      console.log('Making auth check request with session in URL. making request to:', `${authUrl}/auth?session=${sessionId}`);
-      const response = await fetch(`${authUrl}/auth?session=${sessionId}`, {
-        credentials: 'include', // Still include cookies as backup
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      console.log('Auth check response status:', response.status);
-      
-      if (response.ok) {
-        const userData = await response.json() as User;
-        console.log('User authenticated successfully:', userData.email);
-        setUser(userData);
-        setIsAuthenticated(true);
-        return true;
+        // No need to return here, finally block handles loading/checking state
       } else {
-        console.log('Authentication failed:', response.status, response.statusText);
+        console.log('Auth token found in localStorage');
         
-        // If we get a 401, try to read the response body for more details
-        if (response.status === 401) {
-          try {
-            const errorData = await response.text();
-            console.log('Auth error details:', errorData);
-          } catch (e) {
-            console.log('Could not read error response');
+        // Verify token with the server
+        const response = await fetch(`${authUrl}/user`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${token}`
           }
-        }
+        });
+  
+        console.log('Auth check response status:', response.status);
         
-        // If we received a 401 but we have a local cookie, let's use that as a fallback
-        // This allows the app to work offline or when the auth server is down
-        if (response.status === 401 && authCookie) {
-          console.log('Auth server returned 401 but we have a local cookie. Using minimal authentication.');
-          
-          // Extract UUID from cookie for minimal user identification
-          const uuid = authCookie.split('=')[1];
-          
-          // Create a minimal user profile
-          const minimalUser: User = {
-            email: `user-${uuid.substring(0, 8)}`,
-            profileComplete: true
-          };
-          
-          setUser(minimalUser);
+        if (response.ok) {
+          const userData = await response.json() as User;
+          console.log('User authenticated successfully:', userData.email);
+          setUser(userData);
           setIsAuthenticated(true);
           return true;
+        } else {
+          console.log('Authentication failed:', response.status, response.statusText);
+          
+          // If token is invalid, clear it
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+          
+          setUser(null);
+          setIsAuthenticated(false);
+          return false;
         }
-        
-        setUser(null);
-        setIsAuthenticated(false);
-        return false;
       }
     } catch (error) {
       console.error('Authentication check failed with exception:', error);
       
-      // Even if network request failed, if we have a cookie, consider the user authenticated
-      // This is a fallback for offline mode or when auth server is unreachable
-      const cookies = document.cookie.split(';').map(c => c.trim());
-      const authCookie = cookies.find(c => c.startsWith(`${AUTH_COOKIE_NAME}=`));
-      
-      if (authCookie) {
-        console.log('Network request failed but found local auth cookie. Using minimal authentication.');
-        
-        // Extract UUID from cookie for minimal user identification
-        const uuid = authCookie.split('=')[1];
-        
-        // Create a minimal user profile
-        const minimalUser: User = {
-          email: `user-${uuid.substring(0, 8)}`,
-          profileComplete: true
-        };
-        
-        setUser(minimalUser);
-        setIsAuthenticated(true);
-        return true;
-      }
-      
+      // Don't clear token on network errors
       setUser(null);
       setIsAuthenticated(false);
       return false;
@@ -194,7 +134,86 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsLoading(false);
       isCheckingAuth.current = false;
     }
-  };
+    // Added explicit return false if token check was skipped
+    return false; 
+  // Add dependencies for useCallback
+  }, [isAuthenticated, authUrl, setIsLoading, setUser, setIsAuthenticated]); 
+
+  const login = useCallback(async () => { // Also wrap login in useCallback
+    try {
+      // 1. Generate PKCE verifier and challenge
+      const { codeVerifier, codeChallenge } = await generatePKCE();
+      
+      // 2. Generate state
+      const state = crypto.randomUUID();
+      
+      // 3. Store the verifier on the server
+      const initResponse = await fetch(`${authUrl}/pkce/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state, codeVerifier })
+      });
+      
+      if (!initResponse.ok) {
+        throw new Error('Failed to initialize authentication');
+      }
+      
+      // 4. Build the authorization URL
+      const authorizationUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      authorizationUrl.searchParams.set('client_id', AUTH_CONFIG.CLIENT_ID);
+      authorizationUrl.searchParams.set('response_type', 'code');
+      authorizationUrl.searchParams.set('scope', AUTH_CONFIG.SCOPES);
+      authorizationUrl.searchParams.set('redirect_uri', AUTH_CONFIG.REDIRECT_URI);
+      authorizationUrl.searchParams.set('code_challenge_method', 'S256');
+      authorizationUrl.searchParams.set('code_challenge', codeChallenge);
+      authorizationUrl.searchParams.set('state', state);
+      
+      // 5. Open popup for auth
+      const popup = window.open(authorizationUrl.toString(), '_blank', 'width=500,height=600');
+      
+      // 6. Set up window message listener to receive token
+      const messageHandler = (event: MessageEvent) => {
+        // Check origin for security
+        if (event.origin !== authUrl) { 
+          console.warn(`Received message from unexpected origin: ${event.origin}`);
+          return;
+        }
+        // Check if this is our token message
+        if (event.data && event.data.hl_id_token) {
+          console.log('Received token via postMessage');
+          // Store the token
+          localStorage.setItem(AUTH_TOKEN_KEY, event.data.hl_id_token);
+          
+          // Remove listener
+          window.removeEventListener('message', messageHandler);
+          
+          // Refresh authentication state immediately
+          console.log('Triggering auth check after postMessage');
+          checkAuth(); 
+        }
+      };
+      
+      window.addEventListener('message', messageHandler);
+    } catch (err) {
+      console.error('Error starting login process:', err);
+    }
+  // Add checkAuth and authUrl as dependencies
+  }, [checkAuth, authUrl]); 
+
+  const logout = useCallback(() => { // Also wrap logout in useCallback
+    // Clear token from localStorage
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    
+    // Update state
+    setUser(null);
+    setIsAuthenticated(false);
+    
+    // Redirect to logout URL
+    const currentUrl = window.location.origin;
+    const logoutUrl = `${authUrl}/logout?redirect_uri=${encodeURIComponent(currentUrl)}`;
+    window.location.href = logoutUrl;
+  // Add authUrl as dependency
+  }, [authUrl, setUser, setIsAuthenticated]); 
 
   // Clear any pending retry on unmount
   useEffect(() => {
@@ -212,15 +231,66 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     checkAuth();
   }, []);
 
+  // Listen for storage events to detect token changes from other tabs/windows
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === AUTH_TOKEN_KEY) {
+        console.log('Auth token changed in localStorage (storage event), re-checking auth...');
+        checkAuth();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [checkAuth]); // Add checkAuth dependency
+
+  // Set up token refresh before expiration
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) return;
+    
+    try {
+      const tokenData = JSON.parse(atob(token));
+      if (!tokenData.exp) return;
+      
+      const expiryTime = tokenData.exp * 1000;
+      const now = Date.now();
+      
+      if (expiryTime <= now) {
+        console.log('Token expired, logging out');
+        logout(); // Use memoized logout
+        return;
+      }
+      
+      const refreshTime = Math.max(0, expiryTime - now - AUTH_CONFIG.REFRESH_BUFFER);
+      console.log(`Scheduling token refresh in ${Math.floor(refreshTime / 1000)} seconds`);
+      
+      const refreshTimer = setTimeout(() => {
+        console.log('Token refresh timer triggered for silent refresh attempt');
+        login(); // Use memoized login for silent refresh
+      }, refreshTime);
+      
+      return () => clearTimeout(refreshTimer);
+    } catch (e) {
+      console.error('Error parsing token for refresh:', e);
+    }
+  // Add login and logout as dependencies
+  }, [isAuthenticated, login, logout]); 
+
   return (
     <AuthContext.Provider
       value={{
         user,
         isLoading,
         isAuthenticated,
-        login,
-        logout,
-        checkAuth
+        login, // Pass memoized login
+        logout, // Pass memoized logout
+        checkAuth // Pass memoized checkAuth
       }}
     >
       {children}

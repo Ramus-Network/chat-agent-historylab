@@ -2,18 +2,19 @@
 // Handler for authentication callbacks
 
 import type { Env } from "../types";
-import { AUTH_COOKIE_NAME } from "../../hooks/useAuth";
+import { AUTH_CONFIG } from "../../config";
 
 /**
  * Handles the authentication callback from the auth service
- * This sets the session cookie and redirects to the homepage
+ * This sets the token in sessionStorage and redirects to the homepage
  */
 export async function handleAuthCallback(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const session = url.searchParams.get('session');
+  const token = url.searchParams.get('token');
 
-  if (!session) {
-    return new Response('Missing session parameter', { 
+  if (!session && !token) {
+    return new Response('Missing session or token parameter', { 
       status: 400,
       headers: {
         'Content-Type': 'text/html'
@@ -21,7 +22,7 @@ export async function handleAuthCallback(request: Request, env: Env): Promise<Re
     });
   }
 
-  // Create HTML with script to set cookie and redirect
+  // Create HTML with script to set token and redirect
   const html = `
     <!DOCTYPE html>
     <html>
@@ -75,15 +76,23 @@ export async function handleAuthCallback(request: Request, env: Env): Promise<Re
         <p>You are being redirected to the application...</p>
       </div>
       <script>
-        // Set the auth cookie
-        document.cookie = "${AUTH_COOKIE_NAME}=${session}; path=/; max-age=2592000; SameSite=Lax";
+        // Set both token and cookie for backward compatibility
+        ${token ? `
+        // Primary method: Store token in sessionStorage
+        sessionStorage.setItem("${AUTH_CONFIG.TOKEN_KEY}", "${token}");
+        console.log("Auth token set in sessionStorage");
+        ` : ''}
         
-        // Log for debugging
-        console.log("Auth cookie set:", "${AUTH_COOKIE_NAME}=${session}");
+        ${session ? `
+        // Legacy/fallback method: Set cookie
+        document.cookie = "__hl_session=${session}; path=/; max-age=2592000; SameSite=Lax";
+        console.log("Auth cookie set as fallback");
+        ` : ''}
         
-        // Remove session from URL for security
+        // Remove parameters from URL for security
         const cleanUrl = new URL(window.location.href);
         cleanUrl.searchParams.delete('session');
+        cleanUrl.searchParams.delete('token');
         window.history.replaceState({}, document.title, '/');
         
         // Redirect to homepage after a brief delay

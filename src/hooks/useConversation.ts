@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { COLLECTION_ID, hashComponents, decodeHashedComponents, generateUserId, generateConversationId } from '../utils/hash';
-import { useAuth, AUTH_COOKIE_NAME } from './useAuth';
+import { useAuth } from './useAuth';
+import { AUTH_CONFIG } from '../config';
 
 type ConversationHookReturn = {
   userId: string;
@@ -17,20 +18,27 @@ type ConversationHookReturn = {
 export function useConversation(): ConversationHookReturn {
   const { isAuthenticated, user } = useAuth();
 
-  // Get or create userId from cookies
+  // Get or create userId from token or generate a new one
   const [userId, setUserId] = useState<string>(() => {
-    // First try to get the authenticated session cookie
-    const cookies = document.cookie.split(';').map(c => c.trim());
+    // Try to get the authenticated user ID from token
+    const token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
     
-    // Check for auth session cookie first
-    const authCookie = cookies.find(c => c.startsWith(`${AUTH_COOKIE_NAME}=`));
-    if (authCookie) {
-      // Use the authenticated user's UUID as userId
-      return authCookie.split('=')[1];
+    if (token) {
+      try {
+        // Parse the token data
+        const tokenData = JSON.parse(atob(token));
+        if (tokenData.uuid) {
+          // Use the authenticated user's UUID as userId
+          return tokenData.uuid;
+        }
+      } catch (e) {
+        console.error('Error parsing auth token:', e);
+      }
     }
     
     // If not authenticated, fall back to the existing user ID system
-    const userIdCookie = cookies.find(c => c.startsWith('historylab_user_id='));
+    const userIdCookie = document.cookie.split(';').map(c => c.trim())
+      .find(c => c.startsWith('historylab_user_id='));
     
     if (userIdCookie) {
       return userIdCookie.split('=')[1];
@@ -50,16 +58,21 @@ export function useConversation(): ConversationHookReturn {
   // Update userId if the authentication state changes
   useEffect(() => {
     // When a user logs in, update the userId to match their authenticated ID
-    const cookies = document.cookie.split(';').map(c => c.trim());
-    const authCookie = cookies.find(c => c.startsWith(`${AUTH_COOKIE_NAME}=`));
-    
-    if (isAuthenticated && authCookie) {
-      const authUserId = authCookie.split('=')[1];
-      if (authUserId !== userId) {
-        setUserId(authUserId);
+    if (isAuthenticated && user) {
+      const token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+      if (token) {
+        try {
+          // Parse the token data
+          const tokenData = JSON.parse(atob(token));
+          if (tokenData.uuid && tokenData.uuid !== userId) {
+            setUserId(tokenData.uuid);
+          }
+        } catch (e) {
+          console.error('Error parsing auth token:', e);
+        }
       }
     }
-  }, [isAuthenticated, userId]);
+  }, [isAuthenticated, userId, user]);
   
   // State for conversation ID (from URL query parameter or newly generated)
   const [conversationId, setConversationId] = useState(() => {
