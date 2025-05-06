@@ -84,16 +84,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setIsLoading(true);
       
-      // Get token from localStorage
-      const token = localStorage.getItem(AUTH_TOKEN_KEY);
+      // Check for token in URL (used in mobile redirect flow)
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+      
+      if (urlToken) {
+        console.log('Found token in URL parameters');
+        localStorage.setItem(AUTH_TOKEN_KEY, urlToken);
+        
+        // Clean the URL by removing the token parameter
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('token');
+        window.history.replaceState({}, document.title, cleanUrl.toString());
+      }
+      
+      // Get token from localStorage or sessionStorage
+      let token = localStorage.getItem(AUTH_TOKEN_KEY);
+      if (!token) {
+        token = sessionStorage.getItem(AUTH_TOKEN_KEY);
+        if (token) {
+          // Move to localStorage for consistency and to trigger storage events for other tabs
+          localStorage.setItem(AUTH_TOKEN_KEY, token);
+          sessionStorage.removeItem(AUTH_TOKEN_KEY); // Clean up from session
+        }
+      }
       
       if (!token) {
-        // console.log('No auth token found in localStorage');
+        // console.log('No auth token found in localStorage or sessionStorage');
         setUser(null);
         setIsAuthenticated(false);
         // No need to return here, finally block handles loading/checking state
       } else {
-        // console.log('Auth token found in localStorage');
+        // console.log('Auth token found in localStorage or sessionStorage');
         
         // Verify token with the server
         const response = await fetch(`${authUrl}/user`, {
@@ -151,7 +173,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const initResponse = await fetch(`${authUrl}/pkce/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state, codeVerifier })
+        body: JSON.stringify({ 
+          state, 
+          codeVerifier,
+          returnUrl: window.location.href // Tell the server where to return after auth
+        })
       });
       
       if (!initResponse.ok) {
@@ -168,32 +194,63 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       authorizationUrl.searchParams.set('code_challenge', codeChallenge);
       authorizationUrl.searchParams.set('state', state);
       
-      // 5. Open popup for auth
-      const popup = window.open(authorizationUrl.toString(), '_blank', 'width=500,height=600');
-      
-      // 6. Set up window message listener to receive token
-      const messageHandler = (event: MessageEvent) => {
-        // Check origin for security
-        if (event.origin !== authUrl) { 
-          console.warn(`Received message from unexpected origin: ${event.origin}`);
-          return;
+      // 5. Open popup for auth or redirect for mobile
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        // Mobile: Redirect flow
+        const currentUrl = window.location.href;
+        localStorage.setItem('authRedirectReturnPath', currentUrl);
+        
+        // For mobile, explicitly add the return_url parameter to the auth URL
+        authorizationUrl.searchParams.set('return_url', currentUrl);
+        window.location.href = authorizationUrl.toString();
+      } else {
+        // Desktop: Popup flow
+        const popup = window.open(authorizationUrl.toString(), '_blank', 'width=500,height=600');
+        
+        if (popup) {
+          // 6. Set up window message listener to receive token
+          const messageHandler = (event: MessageEvent) => {
+            // Check origin for security
+            if (event.origin !== authUrl) { 
+              console.warn(`Received message from unexpected origin: ${event.origin}`);
+              return;
+            }
+            // Check if this is our token message
+            if (event.data && event.data.hl_id_token) {
+              // console.log('Received token via postMessage');
+              // Store the token in localStorage directly
+              localStorage.setItem(AUTH_TOKEN_KEY, event.data.hl_id_token);
+              
+              // Remove listener and close popup
+              window.removeEventListener('message', messageHandler);
+              if (popup && !popup.closed) {
+                popup.close();
+              }
+              
+              // Refresh authentication state immediately
+              // console.log('Triggering auth check after postMessage');
+              checkAuth(); 
+            }
+          };
+          window.addEventListener('message', messageHandler);
+
+          // Optional: Monitor popup closure to remove listener if user closes it manually
+          const popupTimer = setInterval(() => {
+            if (popup.closed) {
+              clearInterval(popupTimer);
+              window.removeEventListener('message', messageHandler);
+            }
+          }, 500);
+
+        } else {
+          console.error('Failed to open popup. Please ensure popups are not blocked.');
+          // Fallback: could attempt redirect for desktop if popup fails
+          // localStorage.setItem('authRedirectReturnPath', window.location.href);
+          // window.location.href = authorizationUrl.toString();
         }
-        // Check if this is our token message
-        if (event.data && event.data.hl_id_token) {
-          // console.log('Received token via postMessage');
-          // Store the token
-          localStorage.setItem(AUTH_TOKEN_KEY, event.data.hl_id_token);
-          
-          // Remove listener
-          window.removeEventListener('message', messageHandler);
-          
-          // Refresh authentication state immediately
-          // console.log('Triggering auth check after postMessage');
-          checkAuth(); 
-        }
-      };
-      
-      window.addEventListener('message', messageHandler);
+      }
     } catch (err) {
       console.error('Error starting login process:', err);
     }
@@ -230,6 +287,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // console.log('AuthProvider mounted, checking initial authentication');
     checkAuth();
   }, []);
+
+  // Check for token in URL when app first loads or when URL changes
+  useEffect(() => {
+    const handleURLChange = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('token')) {
+        console.log('Auth token found in URL, triggering auth check...');
+        checkAuth();
+      }
+    };
+
+    // Check immediately when component mounts
+    handleURLChange();
+
+    // Also listen to changes in URL (popstate events)
+    window.addEventListener('popstate', handleURLChange);
+    return () => {
+      window.removeEventListener('popstate', handleURLChange);
+    };
+  }, [checkAuth]);
 
   // Listen for storage events to detect token changes from other tabs/windows
   useEffect(() => {
@@ -281,6 +358,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   // Add login and logout as dependencies
   }, [isAuthenticated, login, logout]); 
+
+  // Effect to handle redirecting back after mobile authentication
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      const returnPath = localStorage.getItem('authRedirectReturnPath');
+      if (returnPath) {
+        console.log('Authentication successful after redirect, returning to:', returnPath);
+        localStorage.removeItem('authRedirectReturnPath');
+        // Ensure we are not redirecting to the exact same page 
+        // if already there (e.g. after a refresh on the returnPath itself)
+        if (window.location.href !== returnPath) {
+          window.location.href = returnPath;
+        }
+      }
+    }
+  }, [isLoading, isAuthenticated]);
 
   return (
     <AuthContext.Provider

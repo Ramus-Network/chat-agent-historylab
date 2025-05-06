@@ -5,8 +5,8 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	// Make sure this is history-lab-chat-agent-3 for deployment and have the route uncommented
-  // "name": "history-lab-chat-agent-2",
-  "name": "history-lab-chat-agent-3",
+  // "name": "history-lab-chat-agent-2", // for testing
+  "name": "history-lab-chat-agent-3", // for deployment
 	"main": "src/server/index.ts",
 	"compatibility_date": "2025-02-04",
 	"compatibility_flags": [
@@ -50,15 +50,15 @@
   "kv_namespaces": [
     {
       "binding": "CONVERSATION_LOGS",
-      "id": "8bb1ae1176f44949a855a23291f9a375"
-      // Commented out old namespace for preview
+      "id": "8bb1ae1176f44949a855a23291f9a375" // for deployment
+      // Commented out old namespace used for testing
       // "id": "6f4a584d2e174271b94c80fb51760378",
       // "preview_id": "78e0c04db7084b7dba06ecc625923e8c"
     },
     {
       "binding": "FEEDBACK_LOGS",
-      "id": "4fbf46fcd8fc4d5e9cfd0e4d2ecd5d28" 
-      // Commented out old namespace for preview
+      "id": "4fbf46fcd8fc4d5e9cfd0e4d2ecd5d28" // for deployment
+      // Commented out old namespace used for testing
       // "id": "ce18ad4bd6174c27b0283a06404802f0", 
       // "preview_id": "84e1177667614f4793158bbc708a9ce2" 
     }
@@ -68,7 +68,7 @@
   //   "binding": "AI"    
   // }
   ,
-  // this should be uncommented for deployment
+  // // this should be uncommented for deployment
   "routes": [
     {
       "pattern": "history-lab.ramus.network",
