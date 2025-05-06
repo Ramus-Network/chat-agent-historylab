@@ -14,7 +14,7 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children, fallback }) => {
   
   // Effect to handle verification on initial mount
   useEffect(() => {
-    console.log('AuthGuard mounted, current auth state:', { isAuthenticated, isLoading });
+    // console.log('AuthGuard mounted, current auth state:', { isAuthenticated, isLoading });
     
     // Function to perform auth check
     const verifyAuth = async () => {
@@ -23,27 +23,27 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children, fallback }) => {
       } catch (err) {
         console.error('Error in auth verification:', err);
       } finally {
-        console.log('Auth verification finished');
+        // console.log('Auth verification finished');
         setVerificationComplete(true);
       }
     };
 
     // Only run verification if we're still loading
     if (!verificationComplete && isLoading) {
-      console.log('Running auth verification...');
+      // console.log('Running auth verification...');
       verifyAuth();
     }
   }, [checkAuth, isLoading, isAuthenticated, verificationComplete]);
 
   // Debugging output
-  console.log('AuthGuard render state:', { 
-    isAuthenticated, 
-    isLoading, 
-    verificationComplete,
-    showLoader: isLoading && !verificationComplete,
-    showContent: verificationComplete && isAuthenticated,
-    showFallback: verificationComplete && !isAuthenticated
-  });
+  // console.log('AuthGuard render state:', { 
+  //   isAuthenticated, 
+  //   isLoading, 
+  //   verificationComplete,
+  //   showLoader: isLoading && !verificationComplete,
+  //   showContent: verificationComplete && isAuthenticated,
+  //   showFallback: verificationComplete && !isAuthenticated
+  // });
 
   // Show loader only during initial verification
   if (isLoading && !verificationComplete) {
@@ -59,7 +59,7 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children, fallback }) => {
 
   // If verification is complete but we're not authenticated, show fallback
   if (verificationComplete && !isAuthenticated) {
-    console.log('User not authenticated, showing login screen');
+    // console.log('User not authenticated, showing login screen');
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -77,7 +77,7 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children, fallback }) => {
   }
 
   // User is authenticated and verification is complete, render children
-  console.log('User is authenticated, rendering protected content');
+  // console.log('User is authenticated, rendering protected content');
   return <>{children}</>;
 };
 

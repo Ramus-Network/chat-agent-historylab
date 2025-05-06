@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAgent } from "agents-sdk/react";
 import { useAgentChat } from "agents-sdk/ai-react";
 import type { Message } from "@ai-sdk/react";
-import { RefreshCw, AlertTriangle, Loader2 } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
 
 import ChatHeader from './ChatHeader';
 import ChatMessage from './ChatMessage';
@@ -31,24 +31,17 @@ const ChatContainer: React.FC = () => {
   // Ref to store timeout ID
   const limboTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // State to track padding space needed after user message
-  const [paddingHeight, setPaddingHeight] = useState(0);
-  
   // Track if we're on the first AI response in the conversation
   const isFirstConversationRef = useRef(true);
-  
-  // Track the ID of the message being observed
-  const observedMessageIdRef = useRef<string | null>(null);
-  
-  // Track interval timer for fallback height checking
-  const heightCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Reference to the bottom of the messages container for auto-scrolling
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Ref for the input container to measure its position
+    
+  // Reference to the input container
   const inputContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Reference to the end of the messages for scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // State to track if the bottom of the chat is visible
+  const [isBottomVisible, setIsBottomVisible] = useState(true);
 
   // Get authentication context
   const { user, isAuthenticated } = useAuth();
@@ -102,19 +95,6 @@ const ChatContainer: React.FC = () => {
     }
   }, [status]);
 
-  // Function to scroll the message container to the bottom
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
-
-  // Scroll to bottom on initial mount or when a new conversation starts
-  useEffect(() => {
-    // Use a timeout to ensure layout is complete
-    setTimeout(scrollToBottom, 100);
-  }, [conversationId, scrollToBottom]);
-
   // Function to reload the page
   const handleReload = () => {
     window.location.reload();
@@ -124,6 +104,36 @@ const ChatContainer: React.FC = () => {
   const openNewConversation = () => {
     window.open(window.location.pathname, '_blank', 'noopener,noreferrer');
   };
+
+  // Simple function to scroll to the bottom of the chat
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      // This scrolls to our bottom marker div, not to the last message
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, []);
+
+  // Setup intersection observer to detect if bottom is visible
+  useEffect(() => {
+    if (!messagesEndRef.current) return;
+    
+    // Create an intersection observer
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Update state based on whether the bottom element is visible
+        setIsBottomVisible(entry.isIntersecting);
+      },
+      { threshold: 0.1 } // Consider visible if at least 10% is in view
+    );
+    
+    // Start observing the end element
+    observer.observe(messagesEndRef.current);
+    
+    // Clean up observer on unmount
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   // Wrapper for handleAgentSubmit to set local submission state and start timeout
   const handleSubmit = (e: React.FormEvent) => {
@@ -135,35 +145,8 @@ const ChatContainer: React.FC = () => {
     // Check if this is the first message in the conversation
     const isFirstMessage = agentMessages.length === 0;
     
-    // If this is the first message, mark it so we don't add padding on the first AI response
+    // If this is the first message, mark it so
     isFirstConversationRef.current = isFirstMessage;
-
-    // Set initial padding to full height ONLY if this is not the first message
-    // Calculate dynamic padding based on input container position
-    if (!isFirstMessage) {
-      const calculateInitialPadding = () => {
-        // Get viewport dimensions
-        const viewportHeight = window.innerHeight;
-        
-        // Get the actual position of the input container
-        if (!inputContainerRef.current) return 0;
-        
-        const inputRect = inputContainerRef.current.getBoundingClientRect();
-        const inputTop = inputRect.top;
-        
-        // Calculate padding in vh units (convert from pixels to vh)
-        // Leave 120px for the user message to be visible
-        const visibleMessageHeight = 220;
-        const paddingPx = inputTop - visibleMessageHeight;
-        const paddingVh = (paddingPx / viewportHeight) * 100;
-        
-        return Math.max(0, paddingVh);
-      };
-      
-      setPaddingHeight(calculateInitialPadding());
-    } else {
-      setPaddingHeight(0); // No padding for first message
-    }
     
     setIsSubmitting(true);
     
@@ -204,241 +187,16 @@ const ChatContainer: React.FC = () => {
     metadata.userId = userId;
 
     handleAgentSubmit(e, { data: metadata });
-
-    // Scroll down after submission, but position the new user message at the top
-    setTimeout(() => {
-      const messages = document.querySelectorAll('[id^="message-"]');
-      // Find the latest user message (it should be the last one with items-end class)
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].classList.contains('items-end')) {
-          messages[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
-          break;
-        }
-      }
-    }, 150);
+    
+    // No auto-scrolling after submission anymore
   };
-
-  // Effect to dynamically adjust padding as AI response grows
-  useEffect(() => {
-    // Skip the effect if not streaming or if this is the first conversation
-    if (status !== 'streaming') {
-      // Clear any existing interval when not streaming
-      if (heightCheckIntervalRef.current) {
-        clearInterval(heightCheckIntervalRef.current);
-        heightCheckIntervalRef.current = null;
-      }
-      return;
-    }
-    
-    if (isFirstConversationRef.current) {
-      setPaddingHeight(0); // Ensure no padding for first conversation
-      return;
-    }
-
-    // Function to find the latest AI message element
-    const findLatestAIMessage = () => {
-      const messages = document.querySelectorAll('[id^="message-"]');
-      // Look for the most recent assistant message (not from the user)
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (!messages[i].classList.contains('items-end')) { // Not a user message
-          return { 
-            element: messages[i] as HTMLElement,
-            id: messages[i].id
-          };
-        }
-      }
-      return null;
-    };
-
-    // Function to calculate padding based on message height
-    const calculatePadding = (messageElement: HTMLElement) => {
-      const rect = messageElement.getBoundingClientRect();
-      const messageHeight = rect.height;
-      const viewportHeight = window.innerHeight;
-      
-      // Measure the actual position of the input container
-      if (!inputContainerRef.current) return;
-      
-      const inputRect = inputContainerRef.current.getBoundingClientRect();
-      const inputTop = inputRect.top;
-      
-      // Calculate the available space from the message to the input
-      const availableSpace = inputTop;
-      
-      // Calculate padding needed to position message at the input top 
-      // while showing at least a minimum amount of the message
-      const minVisibleMessage = 120; // show at least 120px of message
-      const targetPadding = Math.max(0, availableSpace - messageHeight + minVisibleMessage);
-      
-      // Convert to vh units
-      const newPaddingVh = (targetPadding / viewportHeight) * 100;
-      
-      // Only update if padding changed significantly (avoids minor flicker)
-      if (Math.abs(newPaddingVh - paddingHeight) > 0.5) {
-        setPaddingHeight(newPaddingVh);
-      }
-    };
-
-    // Get a reference to the latest AI message (after a short delay to ensure DOM is updated)
-    const setupObserver = () => {
-      const result = findLatestAIMessage();
-      if (!result) return;
-      
-      const { element: aiMessage, id: messageId } = result;
-      
-      // If this is the same message we're already observing, don't recreate the observer
-      if (observedMessageIdRef.current === messageId) return;
-      
-      // Remember which message we're observing
-      observedMessageIdRef.current = messageId;
-      
-      // Clear any existing interval
-      if (heightCheckIntervalRef.current) {
-        clearInterval(heightCheckIntervalRef.current);
-      }
-      
-      // Set up ResizeObserver to monitor the AI message size
-      const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          if (entry.target === aiMessage) {
-            calculatePadding(aiMessage);
-          }
-        }
-      });
-      
-      // Start observing the AI message
-      resizeObserver.observe(aiMessage);
-      
-      // Do an initial measurement immediately
-      calculatePadding(aiMessage);
-      
-      // Also set up a fallback interval to check height regularly
-      // This ensures updates even if the ResizeObserver misses some changes
-      heightCheckIntervalRef.current = setInterval(() => {
-        if (aiMessage && document.body.contains(aiMessage)) {
-          calculatePadding(aiMessage);
-        } else {
-          // If the element is no longer in the DOM, clear the interval
-          if (heightCheckIntervalRef.current) {
-            clearInterval(heightCheckIntervalRef.current);
-            heightCheckIntervalRef.current = null;
-          }
-        }
-      }, 200); // Check every 200ms
-      
-      // Clean up observer when component unmounts
-      return () => {
-        resizeObserver.disconnect();
-        if (heightCheckIntervalRef.current) {
-          clearInterval(heightCheckIntervalRef.current);
-          heightCheckIntervalRef.current = null;
-        }
-      };
-    };
-    
-    // Initial setup
-    const timeoutId = setTimeout(setupObserver, 50);
-    
-    // Re-run the setup whenever there are new messages
-    const messageObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          setupObserver();
-        }
-      }
-    });
-    
-    if (scrollContainerRef.current) {
-      messageObserver.observe(scrollContainerRef.current, { 
-        childList: true, 
-        subtree: true 
-      });
-    }
-
-    return () => {
-      clearTimeout(timeoutId);
-      messageObserver.disconnect();
-      if (heightCheckIntervalRef.current) {
-        clearInterval(heightCheckIntervalRef.current);
-        heightCheckIntervalRef.current = null;
-      }
-      // Reset observed message when effect cleanup runs
-      observedMessageIdRef.current = null;
-    };
-  }, [status, paddingHeight]);
 
   // If conversation changes or is cleared, reset the first conversation flag
   useEffect(() => {
     if (agentMessages.length === 0) {
       isFirstConversationRef.current = true;
-      observedMessageIdRef.current = null;
-      if (heightCheckIntervalRef.current) {
-        clearInterval(heightCheckIntervalRef.current);
-        heightCheckIntervalRef.current = null;
-      }
     }
   }, [agentMessages.length, conversationId]);
-
-  // Add window resize listener to recalculate padding when viewport changes
-  useEffect(() => {
-    const handleResize = () => {
-      // Skip if not in the right state for padding
-      if (status !== 'streaming' || isFirstConversationRef.current) return;
-      
-      // Find the latest AI message and recalculate
-      const findLatestAIMessage = () => {
-        const messages = document.querySelectorAll('[id^="message-"]');
-        // Look for the most recent assistant message (not from the user)
-        for (let i = messages.length - 1; i >= 0; i--) {
-          if (!messages[i].classList.contains('items-end')) { // Not a user message
-            return { 
-              element: messages[i] as HTMLElement,
-              id: messages[i].id
-            };
-          }
-        }
-        return null;
-      };
-      
-      const calculatePadding = (messageElement: HTMLElement) => {
-        const rect = messageElement.getBoundingClientRect();
-        const messageHeight = rect.height;
-        const viewportHeight = window.innerHeight;
-        
-        // Measure the actual position of the input container
-        if (!inputContainerRef.current) return;
-        
-        const inputRect = inputContainerRef.current.getBoundingClientRect();
-        const inputTop = inputRect.top;
-        
-        // Calculate the available space from the message to the input
-        const availableSpace = inputTop;
-        
-        // Calculate padding needed to position message at the input top 
-        // while showing at least a minimum amount of the message
-        const minVisibleMessage = 120; // show at least 120px of message
-        const targetPadding = Math.max(0, availableSpace - messageHeight + minVisibleMessage);
-        
-        // Convert to vh units
-        const newPaddingVh = (targetPadding / viewportHeight) * 100;
-        
-        // Only update if padding changed significantly (avoids minor flicker)
-        if (Math.abs(newPaddingVh - paddingHeight) > 0.5) {
-          setPaddingHeight(newPaddingVh);
-        }
-      };
-      
-      const result = findLatestAIMessage();
-      if (result && result.element) {
-        calculatePadding(result.element);
-      }
-    };
-    
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [status, paddingHeight]);
 
   // Keep-alive mechanism to maintain warm Durable Object connection
   useEffect(() => {
@@ -450,16 +208,11 @@ const ChatContainer: React.FC = () => {
       const sendKeepAlive = async () => {
         try {
           // A minimal interaction with the agent to keep the connection alive
-          // This uses the agent's public methods rather than internal properties
           if (agent && typeof agent.send === 'function') {
-            // Send an empty ping message as a string
-            // agent.send('ping');            
-            // const response = await fetch(`${window.location.origin}/ping`);
-            // console.log('Staying alive, staying alive, ah ah ah ... STAYING ALIVE');
+            // Empty implementation to avoid errors
           }
         } catch (err) {
           console.log('Keep-alive error (non-critical):', err);
-          // Don't stop the interval on errors - keep trying
         }
       };
       
@@ -688,7 +441,7 @@ const ChatContainer: React.FC = () => {
       <div className="flex-1 overflow-hidden pb-20 bg-white">
         <div className="mx-auto max-w-6xl mt-4 mb-0 flex-1 overflow-hidden px-4 lg:px-8 py-0">
           <div className="flex flex-col">
-            <div className="flex-1 overflow-y-auto mt-2 pr-2 custom-scrollbar bg-white" ref={scrollContainerRef}>
+            <div className="flex-1 overflow-y-auto mt-2 pr-2 custom-scrollbar bg-white">
               <div className="pb-[80px] bg-white">
                 {agentMessages.length === 0 ? (
                   <div className="bg-white p-4 m-4 mt-8 rounded-lg border border-gray-200">
@@ -804,16 +557,32 @@ const ChatContainer: React.FC = () => {
                     )}
                   </>
                 )}
-                <div ref={messagesEndRef} style={{ height: '1px', width: '100%' }} />
-                {/* Dynamic padding that shrinks as AI response grows */}
-                {paddingHeight > 0 && (
-                  <div style={{ height: `${paddingHeight}vh` }}></div>
-                )}
+                
+                {/* Marker div at the bottom with actual height instead of margin for better scrolling */}
+                <div 
+                  ref={messagesEndRef} 
+                  style={{ height: '11vh', width: '100%' }} 
+                  aria-hidden="true"
+                  className="bg-white"
+                />
               </div>
             </div>
           </div>
         </div>
       </div>
+      
+      {/* Scroll to bottom button - only visible when bottom is not in view */}
+      {!isBottomVisible && agentMessages.length > 0 && (
+        <div className="fixed bottom-28 left-1/2 transform -translate-x-1/2 z-30">
+          <button
+            onClick={scrollToBottom}
+            className="flex items-center justify-center h-10 w-10 rounded-full bg-[#6CA0D6] text-white shadow-md hover:bg-[#5a90c0] focus:outline-none focus:ring-2 focus:ring-[#6CA0D6] focus:ring-opacity-50 transition-colors"
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown className="h-5 w-5" />
+          </button>
+        </div>
+      )}
             
       {/* Fixed input container - white background at the bottom portion */}
       <div 
