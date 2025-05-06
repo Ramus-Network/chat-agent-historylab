@@ -3,6 +3,9 @@ import { COLLECTION_ID, hashComponents, decodeHashedComponents, generateUserId, 
 import { useAuth } from './useAuth';
 import { AUTH_CONFIG } from '../config';
 
+// Session storage key for conversation ID
+const CONVERSATION_ID_KEY = 'historylab_conversation_id';
+
 type ConversationHookReturn = {
   userId: string;
   conversationId: string;
@@ -74,31 +77,57 @@ export function useConversation(): ConversationHookReturn {
     }
   }, [isAuthenticated, userId, user]);
   
-  // State for conversation ID (from URL query parameter or newly generated)
+  // State for conversation ID (from URL query parameter, session storage, or newly generated)
   const [conversationId, setConversationId] = useState(() => {
     // Check if there's an ID in the URL query parameter
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('id');
     
-    // If we have an ID and it's a hash we created, use it
+    // If we have an ID in URL and it's a valid hash, use it
     if (idFromUrl && idFromUrl.length > 20) {
       try {
         // Try to decode it to ensure it's valid
         decodeHashedComponents(idFromUrl);
+        
+        // Save to session storage for this tab
+        sessionStorage.setItem(CONVERSATION_ID_KEY, idFromUrl);
+        
         return idFromUrl;
       } catch (e) {
-        console.error('Invalid conversation ID format:', e);
+        console.error('Invalid conversation ID format from URL:', e);
+        // Fall through to check session storage
+      }
+    }
+    
+    // If no valid ID in URL, check session storage
+    const idFromSession = sessionStorage.getItem(CONVERSATION_ID_KEY);
+    if (idFromSession) {
+      try {
+        // Verify it's valid
+        decodeHashedComponents(idFromSession);
+        
+        // Update the URL with the session ID as a query parameter
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set('id', idFromSession);
+        window.history.replaceState({ conversationId: idFromSession }, '', newUrl.toString());
+        
+        return idFromSession;
+      } catch (e) {
+        console.error('Invalid conversation ID format from session storage:', e);
         // Fall through to create a new ID
       }
     }
     
-    // Create a new conversation-specific ID
+    // Create a new conversation-specific ID if not found in URL or session
     const newConvoId = generateConversationId();
     
     // Hash the components
     const hashedId = hashComponents(userId, COLLECTION_ID, newConvoId);
     
-    // Update the URL with the new ID as a query parameter using replaceState for the initial load
+    // Save to session storage
+    sessionStorage.setItem(CONVERSATION_ID_KEY, hashedId);
+    
+    // Update the URL with the new ID as a query parameter
     const newUrl = new URL(window.location.href);
     newUrl.searchParams.set('id', hashedId);
     // Use replaceState so the initial load doesn't create an extra history entry
@@ -118,9 +147,13 @@ export function useConversation(): ConversationHookReturn {
     // Hash the components 
     const hashedId = hashComponents(userId, COLLECTION_ID, newConvoId);
     
-    // Update state and URL
+    // Update state
     setConversationId(hashedId);
     
+    // Save to session storage
+    sessionStorage.setItem(CONVERSATION_ID_KEY, hashedId);
+    
+    // Update URL
     const newUrl = new URL(window.location.href);
     newUrl.searchParams.set('id', hashedId);
     // Use pushState here to create a new history entry for the *new* conversation
@@ -152,6 +185,9 @@ export function useConversation(): ConversationHookReturn {
           decodeHashedComponents(targetId);
           console.log(`Restoring conversation ID from history: ${targetId}`);
           setConversationId(targetId);
+          
+          // Update session storage
+          sessionStorage.setItem(CONVERSATION_ID_KEY, targetId);
         } catch (e) {
           console.error('Invalid conversation ID during popstate:', e, targetId);
           // If ID is invalid, create a new one
