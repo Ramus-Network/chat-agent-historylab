@@ -102,7 +102,21 @@ const ChatContainer: React.FC = () => {
 
   // Function to open a new conversation in a new tab
   const openNewConversation = () => {
-    window.open(window.location.pathname, '_blank', 'noopener,noreferrer');
+    // Check if the app is running in an iframe
+    const isInIframe = window !== window.parent;
+    
+    console.log("[DEBUG] openNewConversation - isInIframe:", isInIframe);
+    
+    if (isInIframe) {
+      // When in iframe, instead of trying to open a new tab, just clear conversation history
+      console.log("[DEBUG] openNewConversation - In iframe: clearing conversation history");
+      clearHistory();
+      
+    } else {
+      // If not in iframe, use current behavior
+      console.log("[DEBUG] openNewConversation - Opening new tab with path:", window.location.pathname);
+      window.open(window.location.pathname, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Simple function to scroll to the bottom of the chat
