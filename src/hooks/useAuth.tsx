@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const checkAuth = useCallback(async (): Promise<boolean> => {
     // If already checking auth, don't start another check
     if (isCheckingAuth.current) {
-      console.log('Auth check already in progress, skipping this request');
+      // console.log('Auth check already in progress, skipping this request');
       return isAuthenticated;
     }
 
@@ -71,9 +71,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const timeSinceLastCheck = now - lastAuthCheck.current;
     // Allow check if not authenticated, even if throttled, to ensure login state propagates quickly
     if (!isAuthenticated && timeSinceLastCheck < AUTH_RETRY_DELAY && lastAuthCheck.current > 0) {
-      console.log(`Auth check throttled but allowing because user is not authenticated.`);
+      // console.log(`Auth check throttled but allowing because user is not authenticated.`);
     } else if (isAuthenticated && timeSinceLastCheck < AUTH_RETRY_DELAY && lastAuthCheck.current > 0) {
-      console.log(`Auth check throttled (${timeSinceLastCheck}ms < ${AUTH_RETRY_DELAY}ms), reusing previous state:`, isAuthenticated);
+      // console.log(`Auth check throttled (${timeSinceLastCheck}ms < ${AUTH_RETRY_DELAY}ms), reusing previous state:`, isAuthenticated);
       return isAuthenticated; // Only return early if already authenticated and throttled
     }
 
@@ -88,12 +88,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const token = localStorage.getItem(AUTH_TOKEN_KEY);
       
       if (!token) {
-        console.log('No auth token found in localStorage');
+        // console.log('No auth token found in localStorage');
         setUser(null);
         setIsAuthenticated(false);
         // No need to return here, finally block handles loading/checking state
       } else {
-        console.log('Auth token found in localStorage');
+        // console.log('Auth token found in localStorage');
         
         // Verify token with the server
         const response = await fetch(`${authUrl}/user`, {
@@ -104,16 +104,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         });
   
-        console.log('Auth check response status:', response.status);
+        // console.log('Auth check response status:', response.status);
         
         if (response.ok) {
           const userData = await response.json() as User;
-          console.log('User authenticated successfully:', userData.email);
+          // console.log('User authenticated successfully:', userData.email);
           setUser(userData);
           setIsAuthenticated(true);
           return true;
         } else {
-          console.log('Authentication failed:', response.status, response.statusText);
+          // console.log('Authentication failed:', response.status, response.statusText);
           
           // If token is invalid, clear it
           localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -180,7 +180,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         // Check if this is our token message
         if (event.data && event.data.hl_id_token) {
-          console.log('Received token via postMessage');
+          // console.log('Received token via postMessage');
           // Store the token
           localStorage.setItem(AUTH_TOKEN_KEY, event.data.hl_id_token);
           
@@ -188,7 +188,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           window.removeEventListener('message', messageHandler);
           
           // Refresh authentication state immediately
-          console.log('Triggering auth check after postMessage');
+          // console.log('Triggering auth check after postMessage');
           checkAuth(); 
         }
       };
@@ -227,7 +227,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Check authentication status on mount - only once
   useEffect(() => {
-    console.log('AuthProvider mounted, checking initial authentication');
+    // console.log('AuthProvider mounted, checking initial authentication');
     checkAuth();
   }, []);
 
@@ -235,7 +235,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === AUTH_TOKEN_KEY) {
-        console.log('Auth token changed in localStorage (storage event), re-checking auth...');
+        // console.log('Auth token changed in localStorage (storage event), re-checking auth...');
         checkAuth();
       }
     };

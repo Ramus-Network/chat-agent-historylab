@@ -36,7 +36,7 @@ const LoginButton: React.FC = () => {
         </span>
         <button
           onClick={logout}
-          className="inline-flex h-8 items-center justify-center text-sm font-medium bg-gray-200 text-gray-800 px-3 py-1 rounded-md hover:bg-gray-300 transition-colors"
+          className="inline-flex h-8 items-center justify-center text-sm font-medium bg-gray-200 text-gray-800 px-3 py-1 rounded-md hover:bg-gray-300 transition-colors cursor-pointer"
         >
           Logout
         </button>

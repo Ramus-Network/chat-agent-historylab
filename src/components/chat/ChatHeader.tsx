@@ -27,10 +27,15 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 lg:px-8">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Logo" className="h-6 w-auto" />
-            <div className="hidden font-semibold md:block text-gray-900">
+            <a
+              href="https://history-lab.ramus.network/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-serif text-[1.35rem] font-bold tracking-tight transition-colors duration-150 text-[#6CA0D6] hover:text-blue-700 focus-visible:underline focus-visible:outline-none px-1 rounded-md"
+              style={{ fontFamily: "var(--font-serif)", lineHeight: 1.1 }}
+            >
               HistoryLab AI
-            </div>
+            </a>
           </div>
         </div>
         
@@ -42,7 +47,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             onClick={exportConversation}
             disabled={!hasMessages || status === "streaming" || status === "submitted"}
-            className="inline-flex h-8 items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-400 text-gray-600 px-3 py-1 rounded-md"
+            className="inline-flex h-8 items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-400 text-gray-600 px-3 py-1 rounded-md cursor-pointer"
             aria-label="Export conversation"
           >
             <FileDown className="h-4 w-4 md:mr-1" />
@@ -53,7 +58,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             onClick={shareConversationUrl}
             disabled={!hasMessages || status === "streaming" || status === "submitted"}
-            className={`inline-flex h-8 items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-400 text-gray-600 px-3 py-1 rounded-md
+            className={`inline-flex h-8 items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-400 text-gray-600 px-3 py-1 rounded-md cursor-pointer
             ${urlCopied ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}`}
             aria-label="Share conversation link"
           >
@@ -64,7 +69,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
           {/* New Chat Button */}
           <button
             onClick={openNewConversation}
-            className="inline-flex h-8 items-center justify-center text-sm font-medium transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-400 text-gray-600 px-3 py-1 rounded-md"
+            className="inline-flex h-8 items-center justify-center text-sm font-medium transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-400 text-gray-600 px-3 py-1 rounded-md cursor-pointer"
             aria-label="New chat"
           >
             <RotateCcw className="h-4 w-4 md:mr-1" />

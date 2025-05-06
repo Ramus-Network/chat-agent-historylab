@@ -164,9 +164,58 @@ export function useConversation(): ConversationHookReturn {
 
   // Function to share current conversation URL
   const shareConversationUrl = useCallback(() => {
-    navigator.clipboard.writeText(window.location.href);
-    setUrlCopied(true);
-    setTimeout(() => setUrlCopied(false), 2000); // Reset copied state after 2 seconds
+    // Check if we're running in an iframe
+    const isInIframe = window !== window.parent;
+    
+    if (isInIframe) {
+      try {
+        // Fallback method using a temporary textarea element
+        const textArea = document.createElement('textarea');
+        textArea.value = window.location.href;
+        
+        // Make the textarea invisible but part of the document
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        textArea.style.left = '0';
+        textArea.style.top = '0';
+        textArea.style.width = '1px';
+        textArea.style.height = '1px';
+        textArea.style.padding = '0';
+        
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        // Try to use the older document.execCommand method
+        const successful = document.execCommand('copy');
+        
+        // Clean up
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+          setUrlCopied(true);
+          setTimeout(() => setUrlCopied(false), 2000);
+        } else {
+          // Show a manual copy dialog or message if execCommand also fails
+          // This could be a fallback alert with instructions
+          alert('Clipboard access is restricted. Please copy this URL manually: ' + window.location.href);
+        }
+      } catch (err) {
+        // If all else fails, show the URL to manually copy
+        alert('Clipboard access is restricted. Please copy this URL manually: ' + window.location.href);
+      }
+    } else {
+      // Use the Clipboard API in normal (non-iframe) context
+      navigator.clipboard.writeText(window.location.href)
+        .then(() => {
+          setUrlCopied(true);
+          setTimeout(() => setUrlCopied(false), 2000);
+        })
+        .catch(() => {
+          // Fallback if Clipboard API fails for some reason
+          alert('Could not copy to clipboard. Please copy this URL manually: ' + window.location.href);
+        });
+    }
   }, []);
 
   // Handle browser back/forward navigation

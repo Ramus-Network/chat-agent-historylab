@@ -49,9 +49,58 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   // Function to copy message content to clipboard
   const copyMessageContent = () => {
     const textContent = extractMessageText(message);
-    navigator.clipboard.writeText(textContent);
-    setCopiedMessageId(true);
-    setTimeout(() => setCopiedMessageId(false), 2000); // Reset after 2 seconds
+    
+    // Check if we're running in an iframe
+    const isInIframe = window !== window.parent;
+    
+    if (isInIframe) {
+      try {
+        // Fallback method using a temporary textarea element
+        const textArea = document.createElement('textarea');
+        textArea.value = textContent;
+        
+        // Make the textarea invisible but part of the document
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        textArea.style.left = '0';
+        textArea.style.top = '0';
+        textArea.style.width = '1px';
+        textArea.style.height = '1px';
+        textArea.style.padding = '0';
+        
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        // Try to use the older document.execCommand method
+        const successful = document.execCommand('copy');
+        
+        // Clean up
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+          setCopiedMessageId(true);
+          setTimeout(() => setCopiedMessageId(false), 2000);
+        } else {
+          // Show a manual copy dialog or message if execCommand also fails
+          alert('Clipboard access is restricted. Please copy this text manually: ' + textContent);
+        }
+      } catch (err) {
+        // If all else fails, show the text to manually copy
+        alert('Clipboard access is restricted. Please copy this text manually: ' + textContent);
+      }
+    } else {
+      // Use the Clipboard API in normal (non-iframe) context
+      navigator.clipboard.writeText(textContent)
+        .then(() => {
+          setCopiedMessageId(true);
+          setTimeout(() => setCopiedMessageId(false), 2000);
+        })
+        .catch(() => {
+          // Fallback if Clipboard API fails for some reason
+          alert('Could not copy to clipboard. Please copy this text manually: ' + textContent);
+        });
+    }
   };
 
   return (
