@@ -79,19 +79,14 @@ const ExampleQueries: React.FC<ExampleQueriesProps> = ({ onSelectQuery }) => {
     },
     {
       emojis: "🇮🇷 💰 🔗",
-      label: "Iran-Contra Affair",
-      query: "Find documents about the Reagan administration's internal debates on the Iran-Contra affair between 1985-1987."
+      label: "Iran-Contra Affair", 
+      query: "Find State Department and intelligence documents about the Iran-Contra affair between 1985-1987, including details about arms sales and funding of the Contras."
     },
     {
       emojis: "🇨🇳 ✊ 📝",
       label: "Tiananmen Square Reports",
       query: "What did US diplomats report about the Tiananmen Square protests as they were happening in May-June 1989?"
-    },
-    {
-      emojis: "🇷🇸 🧩 🌍",
-      label: "Yugoslavia Breakup",
-      query: "How did the State Department assess the breakup of Yugoslavia in diplomatic cables between 1990-1992?"
-    },
+    },  
     {
       emojis: "🇪🇬 🇮🇱 ✍️",
       label: "Camp David Accords",
