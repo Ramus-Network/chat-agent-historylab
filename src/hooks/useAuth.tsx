@@ -345,7 +345,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       
       const refreshTime = Math.max(0, expiryTime - now - AUTH_CONFIG.REFRESH_BUFFER);
-      console.log(`Scheduling token refresh in ${Math.floor(refreshTime / 1000)} seconds`);
+      // console.log(`Scheduling token refresh in ${Math.floor(refreshTime / 1000)} seconds`);
       
       const refreshTimer = setTimeout(() => {
         console.log('Token refresh timer triggered for silent refresh attempt');

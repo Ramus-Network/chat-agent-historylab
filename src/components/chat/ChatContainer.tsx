@@ -268,13 +268,13 @@ const ChatContainer: React.FC = () => {
   }, [status]);
 
   // Debug logging for status
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      console.log('Current chat status:', status);
-    }, 5000);
+  // useEffect(() => {
+  //   const intervalId = setInterval(() => {
+  //     console.log('Current chat status:', status);
+  //   }, 5000);
 
-    return () => clearInterval(intervalId);
-  }, [status]);
+  //   return () => clearInterval(intervalId);
+  // }, [status]);
 
   // Track user activity and reload on inactivity
   useEffect(() => {

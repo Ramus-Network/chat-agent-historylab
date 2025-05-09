@@ -23,8 +23,12 @@ export function useConversation(): ConversationHookReturn {
 
   // Get or create userId from token or generate a new one
   const [userId, setUserId] = useState<string>(() => {
-    // Try to get the authenticated user ID from token
-    const token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+    // Try to get the authenticated user ID from token - first from localStorage, then sessionStorage
+    let token = localStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+    if (!token) {
+      token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+    }
+    // console.log("token", token);
     
     if (token) {
       try {
@@ -32,18 +36,21 @@ export function useConversation(): ConversationHookReturn {
         const tokenData = JSON.parse(atob(token));
         if (tokenData.uuid) {
           // Use the authenticated user's UUID as userId
+          // console.log("tokenData.uuid", tokenData.uuid);
           return tokenData.uuid;
         }
       } catch (e) {
         console.error('Error parsing auth token:', e);
       }
     }
+    // console.log("Falling back to user ID system");
     
     // If not authenticated, fall back to the existing user ID system
     const userIdCookie = document.cookie.split(';').map(c => c.trim())
       .find(c => c.startsWith('historylab_user_id='));
     
     if (userIdCookie) {
+      // console.log("userIdCookie", userIdCookie);
       return userIdCookie.split('=')[1];
     }
     
@@ -54,7 +61,7 @@ export function useConversation(): ConversationHookReturn {
     const expiryDate = new Date();
     expiryDate.setFullYear(expiryDate.getFullYear() + 1);
     document.cookie = `historylab_user_id=${newUserId};expires=${expiryDate.toUTCString()};path=/;SameSite=Strict`;
-    
+    // console.log("newUserId", newUserId);
     return newUserId;
   });
   
@@ -62,7 +69,12 @@ export function useConversation(): ConversationHookReturn {
   useEffect(() => {
     // When a user logs in, update the userId to match their authenticated ID
     if (isAuthenticated && user) {
-      const token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+      // Try to get the authenticated user ID from token - first from localStorage, then sessionStorage
+      let token = localStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+      if (!token) {
+        token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+      }
+      
       if (token) {
         try {
           // Parse the token data
@@ -232,7 +244,7 @@ export function useConversation(): ConversationHookReturn {
         try {
           // Validate the ID format
           decodeHashedComponents(targetId);
-          console.log(`Restoring conversation ID from history: ${targetId}`);
+          // console.log(`Restoring conversation ID from history: ${targetId}`);
           setConversationId(targetId);
           
           // Update session storage
@@ -244,7 +256,7 @@ export function useConversation(): ConversationHookReturn {
         }
       } else if (!targetId) {
          // If no ID is found in URL or state
-         console.log("No valid ID found on popstate, creating new conversation.");
+         // console.log("No valid ID found on popstate, creating new conversation.");
          createNewConversation();
       }
     };
