@@ -109,6 +109,8 @@ const queryCollection = tool({
       const agent = getAgent();
       const vectorizeSearch = agent.getVectorizeSearch();
 
+      // Check balance of credits for the user
+
       const k = 5;
       
       // Build filters for the search
@@ -205,7 +207,9 @@ const queryCollection = tool({
       // Check for error
       if (results?.error) {
         logError("queryCollection", `Error querying collection`, results.error, { query, doc_id, authored_start_year_month, authored_end_year_month, authored_start_year_month_day, authored_end_year_month_day });        
-      }                
+      }     
+      
+      // Decrement the balance of credits for the user
       
       // Log the number of results returned
       logInfo("queryCollection", `Search returned ${results?.matches?.length || 0} results`);
