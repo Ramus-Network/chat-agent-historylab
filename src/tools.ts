@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { agentContext, type Env } from "./server";
 import { logDebug, logInfo, logError } from "./shared"; 
+import { API_CONFIG } from "./config";
 
 function getAgent() {
   const agent = agentContext.getStore();
@@ -16,6 +17,17 @@ function getAgent() {
     throw new Error("Agent not found");
   }
   return agent;
+}
+
+// Type definitions for the financial points system API responses
+interface PointsResponse {
+  points: number;
+  transactions: {
+    amount: number;
+    type: string;
+    timestamp: number;
+    description: string;
+  }[];
 }
 
 // EXAMPLES OF TOOLS
@@ -107,116 +119,171 @@ const queryCollection = tool({
 
     try {
       const agent = getAgent();
-      const vectorizeSearch = agent.getVectorizeSearch();
-
-      // Check balance of credits for the user
-
-      const k = 5;
       
-      // Build filters for the search
-      const filters: Record<string, any> = {};
+      // Get the userId from the agent
+      const userId = agent.getUserId();
       
-      // Add document ID filter if specified
-      if (doc_id) {
-        filters.doc_id = doc_id;
-      }
+      // Check user's credit balance before proceeding
+      const pointsUrl = `${API_CONFIG.POINTS_API_URL}/get-user-points/${userId}`;
+      logInfo("queryCollection", `Checking points balance for user: ${userId}`);
       
-      // Helper function to convert date strings to numeric format
-      const convertYearMonthToNumber = (dateStr: string): number => {
-        // Extract YYYY and MM parts from YYYY-MM format
-        const [year, month] = dateStr.split('-');
-        // Return YYYYMM as number
-        return parseInt(`${year}${month}`, 10);
-      };
-      
-      const convertYearMonthDayToNumber = (dateStr: string): number => {
-        // Remove all hyphens to convert YYYY-MM-DD to YYYYMMDD
-        const numStr = dateStr.replace(/-/g, '');
-        return parseInt(numStr, 10);
-      };
-      
-      // Check if year-month-day parameters are provided
-      const hasYearMonthDayParams = authored_start_year_month_day || authored_end_year_month_day;
-      
-      // Add year_month_day date range filters if specified (priority over year_month)
-      if (hasYearMonthDayParams) {
-        filters.authored_year_month_day = {};
+      try {
+        const pointsResponse = await fetch(pointsUrl);
         
-        // Check if start and end are the same - use $eq instead of range
-        if (authored_start_year_month_day && authored_end_year_month_day && 
-            authored_start_year_month_day === authored_end_year_month_day) {
-          filters.authored_year_month_day.$eq = convertYearMonthDayToNumber(authored_start_year_month_day);
-        } else {
-          // Use range operators when values are different
-          if (authored_start_year_month_day) {
-            filters.authored_year_month_day.$gte = convertYearMonthDayToNumber(authored_start_year_month_day);
-          }
+        if (!pointsResponse.ok) {
+          logError("queryCollection", "Error checking user points", null, { userId, status: pointsResponse.status });
+          return { error: "Unable to verify points balance" };
+        }
+        
+        const pointsData = await pointsResponse.json() as PointsResponse;
+        
+        // Check if user has enough points for a search
+        if (pointsData.points <= 0) {
+          logInfo("queryCollection", `User ${userId} has insufficient points: ${pointsData.points}`);
+          return { 
+            error: "Insufficient points", 
+            message: "You don't have enough credits to perform this search. Please purchase more credits to continue.",
+            currentPoints: pointsData.points
+          };
+        }
+        
+        // Continue with the search if user has sufficient points
+        const vectorizeSearch = agent.getVectorizeSearch();
+        
+        const k = API_CONFIG.SEARCH_RESULTS_LIMIT;
+        
+        // Build filters for the search
+        const filters: Record<string, any> = {};
+        
+        // Add document ID filter if specified
+        if (doc_id) {
+          filters.doc_id = doc_id;
+        }
+        
+        // Helper function to convert date strings to numeric format
+        const convertYearMonthToNumber = (dateStr: string): number => {
+          // Extract YYYY and MM parts from YYYY-MM format
+          const [year, month] = dateStr.split('-');
+          // Return YYYYMM as number
+          return parseInt(`${year}${month}`, 10);
+        };
+        
+        const convertYearMonthDayToNumber = (dateStr: string): number => {
+          // Remove all hyphens to convert YYYY-MM-DD to YYYYMMDD
+          const numStr = dateStr.replace(/-/g, '');
+          return parseInt(numStr, 10);
+        };
+        
+        // Check if year-month-day parameters are provided
+        const hasYearMonthDayParams = authored_start_year_month_day || authored_end_year_month_day;
+        
+        // Add year_month_day date range filters if specified (priority over year_month)
+        if (hasYearMonthDayParams) {
+          filters.authored_year_month_day = {};
           
-          if (authored_end_year_month_day) {
-            filters.authored_year_month_day.$lte = convertYearMonthDayToNumber(authored_end_year_month_day);
+          // Check if start and end are the same - use $eq instead of range
+          if (authored_start_year_month_day && authored_end_year_month_day && 
+              authored_start_year_month_day === authored_end_year_month_day) {
+            filters.authored_year_month_day.$eq = convertYearMonthDayToNumber(authored_start_year_month_day);
+          } else {
+            // Use range operators when values are different
+            if (authored_start_year_month_day) {
+              filters.authored_year_month_day.$gte = convertYearMonthDayToNumber(authored_start_year_month_day);
+            }
+            
+            if (authored_end_year_month_day) {
+              filters.authored_year_month_day.$lte = convertYearMonthDayToNumber(authored_end_year_month_day);
+            }
+          }
+        } 
+        // Only use year_month filters if year_month_day is not provided
+        else if (authored_start_year_month || authored_end_year_month) {
+          filters.authored_year_month = {};
+          
+          // Check if start and end are the same - use $eq instead of range
+          if (authored_start_year_month && authored_end_year_month && 
+              authored_start_year_month === authored_end_year_month) {
+            filters.authored_year_month.$eq = convertYearMonthToNumber(authored_start_year_month);
+          } else {
+            // Use range operators when values are different
+            if (authored_start_year_month) {
+              filters.authored_year_month.$gte = convertYearMonthToNumber(authored_start_year_month);
+            }
+            
+            if (authored_end_year_month) {
+              filters.authored_year_month.$lte = convertYearMonthToNumber(authored_end_year_month);
+            }
           }
         }
-      } 
-      // Only use year_month filters if year_month_day is not provided
-      else if (authored_start_year_month || authored_end_year_month) {
-        filters.authored_year_month = {};
         
-        // Check if start and end are the same - use $eq instead of range
-        if (authored_start_year_month && authored_end_year_month && 
-            authored_start_year_month === authored_end_year_month) {
-          filters.authored_year_month.$eq = convertYearMonthToNumber(authored_start_year_month);
-        } else {
-          // Use range operators when values are different
-          if (authored_start_year_month) {
-            filters.authored_year_month.$gte = convertYearMonthToNumber(authored_start_year_month);
-          }
-          
-          if (authored_end_year_month) {
-            filters.authored_year_month.$lte = convertYearMonthToNumber(authored_end_year_month);
-          }
-        }
-      }
-      
-      // Always use the history-lab-1 collection ID
-      const finalCollectionId = "80650a98-fe49-429a-afbd-9dde66e2d02b"; // history-lab-1
-      
-      // Log the complete search request for debugging
-      logDebug("queryCollection", `Search request: {
-        queries: "${query}",
-        collection_id: "${finalCollectionId}",
-        topK: ${k},
-        filters: ${JSON.stringify(filters)}
-      }`);
-      
-      // Create the request object for the new API format
-      const request = {
-        queries: query,
-        collection_id: finalCollectionId,
-        topK: k,
-        filters: Object.keys(filters).length > 0 ? filters : undefined
-      };
-      
-      // Call the vector search with parameters using the new format
-      const results = await vectorizeSearch.findSimilarEmbeddings(
-        request.queries,
-        request.collection_id,
-        request.topK,
-        request.filters
-      );
+        // Always use the history-lab-1 collection ID
+        const finalCollectionId = "80650a98-fe49-429a-afbd-9dde66e2d02b"; // history-lab-1
+        
+        // Log the complete search request for debugging
+        logDebug("queryCollection", `Search request: {
+          queries: "${query}",
+          collection_id: "${finalCollectionId}",
+          topK: ${k},
+          filters: ${JSON.stringify(filters)}
+        }`);
+        
+        // Create the request object for the new API format
+        const request = {
+          queries: query,
+          collection_id: finalCollectionId,
+          topK: k,
+          filters: Object.keys(filters).length > 0 ? filters : undefined
+        };
+        
+        // Call the vector search with parameters using the new format
+        const results = await vectorizeSearch.findSimilarEmbeddings(
+          request.queries,
+          request.collection_id,
+          request.topK,
+          request.filters
+        );
 
-      // Check for error
-      if (results?.error) {
-        logError("queryCollection", `Error querying collection`, results.error, { query, doc_id, authored_start_year_month, authored_end_year_month, authored_start_year_month_day, authored_end_year_month_day });        
-      }     
-      
-      // Decrement the balance of credits for the user
-      
-      // Log the number of results returned
-      logInfo("queryCollection", `Search returned ${results?.matches?.length || 0} results`);
-      
-      // Log detailed results for debugging
-      logDebug("queryCollection", `Results: ${JSON.stringify(results)}`);
-      return results;
+        // Check for error
+        if (results?.error) {
+          logError("queryCollection", `Error querying collection`, results.error, { query, doc_id, authored_start_year_month, authored_end_year_month, authored_start_year_month_day, authored_end_year_month_day });        
+          return results;
+        }     
+        
+        // If search was successful, deduct one point from the user's balance
+        const deductUrl = `${API_CONFIG.POINTS_API_URL}/api/deduct-points/${userId}`;
+        const deductResponse = await fetch(deductUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            points: 1,
+            description: "Document search query"
+          })
+        });
+        
+        if (!deductResponse.ok) {
+          logError("queryCollection", "Error deducting points", null, { 
+            userId, 
+            status: deductResponse.status,
+            response: await deductResponse.text()
+          });
+          // We'll still return the results even if point deduction fails, but log the error
+        } else {
+          const deductData = await deductResponse.json() as PointsResponse;
+          logInfo("queryCollection", `Successfully deducted 1 point from user ${userId}. Remaining points: ${deductData.points}`);
+        }
+        
+        // Log the number of results returned
+        logInfo("queryCollection", `Search returned ${results?.matches?.length || 0} results`);
+        
+        // Log detailed results for debugging
+        logDebug("queryCollection", `Results: ${JSON.stringify(results)}`);
+        return results;
+      } catch (error) {
+        logError("queryCollection", "Error checking or deducting points", error, { userId });
+        return { error: "Failed to process points for search operation" };
+      }
     } catch (error) {
       // logDebug("queryCollection", `Error querying collection: ${error}`);
       logError("queryCollection", "Error querying collection", error, { query, doc_id, authored_start_year_month, authored_end_year_month, authored_start_year_month_day, authored_end_year_month_day });
@@ -333,20 +400,10 @@ export const executions = {
       // Filter the conversation history
       const filteredConversation = filterConversationForFeedback(messages);
 
-      // Decode user/convo IDs (reuse existing logic if possible, or basic split)
-      // Basic split for now, ideally reuse decodeHashedComponents if accessible
-      let userId = 'unknown';
-      let collectionId = 'unknown';
-      let convoId = 'unknown';
-      try {
-        // Attempt to reuse decoding logic or implement a simple version
-        const decoded = Buffer.from(agentName, 'base64').toString('utf-8').split('|');
-        if (decoded.length === 3) {
-          [userId, collectionId, convoId] = decoded;
-        }
-      } catch (error) {
-        logError("SubmitFeedback", "Failed to decode agent name for IDs, using defaults.", error, { agentName });
-      }
+      // Get user, collection, and conversation IDs from the agent
+      const userId = agent.getUserId();
+      const collectionId = agent.getCollectionId();
+      const convoId = agent.getConvoId();
 
       // Generate a unique report ID
       const reportId = `feedback-${userId}-${convoId}-${Date.now()}`;

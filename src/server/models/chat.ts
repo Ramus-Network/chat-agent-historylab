@@ -33,11 +33,29 @@ export const agentContext = new AsyncLocalStorage<Chat>();
 export class Chat extends AIChatAgent<Env> {
   public env: Env;
   private conversationLogger: ConversationLogger;
+  private userId: string = "unknown";
+  private collectionId: string = COLLECTION_ID;
+  private convoId: string = "unknown";
 
   constructor(state: DurableObjectState, env: Env, name?: string) {
     super(state, env);
     this.env = env;
     this.conversationLogger = new ConversationLogger(env.CONVERSATION_LOGS);
+    
+    // Decode the agent name if available during construction
+    if (name) {
+      try {
+        const decodedComponents = decodeHashedComponents(name);
+        this.userId = decodedComponents.userId;
+        this.collectionId = decodedComponents.collectionId;
+        this.convoId = decodedComponents.convoId;
+      } catch (error) {
+        logInfo("Chat.constructor", "Failed to decode conversation components, using defaults", { 
+          error, 
+          agentName: name 
+        });
+      }
+    }
   }
 
   public getBucket() {
@@ -51,6 +69,18 @@ export class Chat extends AIChatAgent<Env> {
   public getFeedbackKV() {
     return this.env.FEEDBACK_LOGS;
   }
+  
+  public getUserId() {
+    return this.userId;
+  }
+  
+  public getCollectionId() {
+    return this.collectionId;
+  }
+  
+  public getConvoId() {
+    return this.convoId;
+  }
 
   /**
    * Handles incoming chat messages and manages the response stream
@@ -61,21 +91,17 @@ export class Chat extends AIChatAgent<Env> {
     logInfo("Chat.onChatMessage", "Starting chat message processing");
 
     // Get the hashed ID from the agent name and decode it
-    let userId = "unknown";
-    let collectionId = COLLECTION_ID;
-    let convoId = "unknown";
-    
     if (this.name) {
       try {
         const decodedComponents = decodeHashedComponents(this.name);
-        userId = decodedComponents.userId;
-        collectionId = decodedComponents.collectionId;
-        convoId = decodedComponents.convoId;
+        this.userId = decodedComponents.userId;
+        this.collectionId = decodedComponents.collectionId;
+        this.convoId = decodedComponents.convoId;
         
         logInfo("Chat.onChatMessage", "Successfully decoded conversation components", { 
-          userId, 
-          collectionId, 
-          convoId 
+          userId: this.userId, 
+          collectionId: this.collectionId, 
+          convoId: this.convoId 
         });
       } catch (error) {
         logInfo("Chat.onChatMessage", "Failed to decode conversation components, using defaults", { 
@@ -88,13 +114,13 @@ export class Chat extends AIChatAgent<Env> {
     }
   
     logInfo("Chat.onChatMessage", "Connection info", { 
-      userId, 
-      collectionId, 
-      convoId 
+      userId: this.userId, 
+      collectionId: this.collectionId, 
+      convoId: this.convoId 
     });  
 
     // Initialize conversation log
-    await this.conversationLogger.initConversationLog(userId, collectionId, convoId);
+    await this.conversationLogger.initConversationLog(this.userId, this.collectionId, this.convoId);
 
     // Create a streaming response that handles both text and tool outputs
     return agentContext.run(this, async () => {
@@ -156,9 +182,9 @@ export class Chat extends AIChatAgent<Env> {
               await this.conversationLogger.processStreamCompletion(
                 event, 
                 this.messages, 
-                userId, 
-                collectionId, 
-                convoId
+                this.userId, 
+                this.collectionId, 
+                this.convoId
               );
             },
             maxSteps: 10,
