@@ -19,17 +19,6 @@ function getAgent() {
   return agent;
 }
 
-// Type definitions for the financial points system API responses
-interface PointsResponse {
-  points: number;
-  transactions: {
-    amount: number;
-    type: string;
-    timestamp: number;
-    description: string;
-  }[];
-}
-
 // EXAMPLES OF TOOLS
 /**
  * Weather information tool that requires human confirmation
@@ -123,27 +112,23 @@ const queryCollection = tool({
       // Get the userId from the agent
       const userId = agent.getUserId();
       
-      // Check user's credit balance before proceeding
-      const pointsUrl = `${API_CONFIG.POINTS_API_URL}/get-user-points/${userId}`;
+      // Check user's credit balance using RPC call to Financial Worker
       logInfo("queryCollection", `Checking points balance for user: ${userId}`);
       
       try {
-        const pointsResponse = await fetch(pointsUrl);
+        // Get the Financial Worker via the agent
+        const financial = agent.getFinancial();
         
-        if (!pointsResponse.ok) {
-          logError("queryCollection", "Error checking user points", null, { userId, status: pointsResponse.status });
-          return { error: "Unable to verify points balance" };
-        }
-        
-        const pointsData = await pointsResponse.json() as PointsResponse;
+        // Get user data including points balance
+        const userData = await financial.getUser(userId);
         
         // Check if user has enough points for a search
-        if (pointsData.points <= 0) {
-          logInfo("queryCollection", `User ${userId} has insufficient points: ${pointsData.points}`);
+        if (userData.points <= 0) {
+          logInfo("queryCollection", `User ${userId} has insufficient points: ${userData.points}`);
           return { 
             error: "Insufficient points", 
             message: "You don't have enough credits to perform this search. Please purchase more credits to continue.",
-            currentPoints: pointsData.points
+            currentPoints: userData.points
           };
         }
         
@@ -249,29 +234,19 @@ const queryCollection = tool({
           return results;
         }     
         
-        // If search was successful, deduct one point from the user's balance
-        const deductUrl = `${API_CONFIG.POINTS_API_URL}/api/deduct-points/${userId}`;
-        const deductResponse = await fetch(deductUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            points: 1,
-            description: "Document search query"
-          })
-        });
-        
-        if (!deductResponse.ok) {
-          logError("queryCollection", "Error deducting points", null, { 
-            userId, 
-            status: deductResponse.status,
-            response: await deductResponse.text()
-          });
-          // We'll still return the results even if point deduction fails, but log the error
-        } else {
-          const deductData = await deductResponse.json() as PointsResponse;
+        // If search was successful, deduct one point from the user's balance using RPC
+        try {
+          const financial = agent.getFinancial();
+          const deductData = await financial.deductPoints(
+            userId,
+            1,
+            "Document search query"
+          );
+          
           logInfo("queryCollection", `Successfully deducted 1 point from user ${userId}. Remaining points: ${deductData.points}`);
+        } catch (error) {
+          logError("queryCollection", "Error deducting points", error, { userId });
+          // We'll still return the results even if point deduction fails, but log the error
         }
         
         // Log the number of results returned

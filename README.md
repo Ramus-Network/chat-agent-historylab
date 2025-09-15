@@ -1,244 +1,405 @@
-# 🤖 Chat Agent Starter Kit
+# HistoryLab AI: A Production AI Research Assistant Example
 
-![agents-header](https://github.com/user-attachments/assets/f6d99eeb-1803-4495-9c5e-3cf07a37b402)
+> **🎯 This is a Real-World Example Implementation**
+> This repository showcases **HistoryLab AI**, a production AI research assistant built by Columbia University's History Lab. It demonstrates how to build sophisticated AI agents using Cloudflare's infrastructure. This is **not a template to copy** but rather an **inspiring example** of what's possible when building advanced AI systems.
 
-A starter template for building AI-powered chat agents using Cloudflare's Agent platform, powered by [`agents-sdk`](https://www.npmjs.com/package/agents-sdk). This project provides a foundation for creating interactive chat experiences with AI, complete with a modern UI and tool integration capabilities.
+![HistoryLab AI](https://github.com/user-attachments/assets/f6d99eeb-1803-4495-9c5e-3cf07a37b402)
 
-## Features
+## About HistoryLab AI
 
-- 💬 Interactive chat interface with AI
-- 🛠️ Built-in tool system with human-in-the-loop confirmation
-- 📅 Advanced task scheduling (one-time, delayed, and recurring via cron)
-- 🌓 Dark/Light theme support
-- ⚡️ Real-time streaming responses
-- 🔄 State management and chat history
-- 🎨 Modern, responsive UI
+**HistoryLab AI** is a research assistant that provides natural language access to nearly 5 million declassified historical documents (18+ million pages). Built by [Columbia University's History Lab](https://lab.history.columbia.edu/), it demonstrates advanced retrieval-augmented generation (RAG) techniques for academic research.
 
-## Prerequisites
+### What Makes This Example Special
 
-- Cloudflare account
-- OpenAI API key
+- **🔍 Advanced RAG Implementation**: Semantic search across 5M+ documents using vector embeddings
+- **📚 Multi-Collection Architecture**: Presidential Daily Briefings, CIA files, State Department cables, UN Archives, and more
+- **💬 Real-time Chat Interface**: Streaming AI responses with citation handling
+- **🛠️ Sophisticated Tool System**: Vector search, document retrieval, feedback collection
+- **🔐 Production Authentication**: Google OAuth integration with session management
+- **💳 Credits System**: Point-based usage tracking with financial service integration
+- **⚡ Cloudflare Infrastructure**: Workers, Durable Objects, R2, KV, and external service bindings
 
-## Quick Start
+## Architecture Overview
 
-1. Create a new project:
-
-```bash
-npm create cloudflare@latest -- --template cloudflare/agents-starter
-```
-
-2. Install dependencies:
-
-```bash
-npm install
-```
-
-3. Set up your environment:
-
-Create a `.dev.vars` file:
-
-```env
-OPENAI_API_KEY=your_openai_api_key
-```
-
-4. Run locally:
-
-```bash
-npm start
-```
-
-5. Deploy:
-
-```bash
-npm run deploy
-```
-
-## Project Structure
+This system demonstrates a complex multi-service architecture:
 
 ```
-├── src/
-│   ├── app.tsx        # Chat UI implementation
-│   ├── server.ts      # Chat agent logic
-│   ├── tools.ts       # Tool definitions
-│   ├── utils.ts       # Helper functions
-│   └── styles.css     # UI styling
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   React Client  │───▶│  Chat Agent      │───▶│  Vector Search  │
+│   (Frontend)    │    │  (Durable Object)│    │  Worker         │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌──────────────────┐    ┌─────────────────┐
+                       │   Document       │    │                      │
+                       │   Storage (R2)   │                     │
+                       └──────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌──────────────────┐
+                       │  Conversation    │
+                       │  Logs (KV)       │
+                       └──────────────────┘
 ```
 
-## Customization Guide
+## Key Implementation Insights
 
-### Adding New Tools
+### 1. Advanced Tool Design
 
-Add new tools in `tools.ts` using the tool builder:
+The system implements three sophisticated tools that showcase different patterns:
 
+#### Vector Search Tool (`queryCollection`)
 ```typescript
-// Example of a tool that requires confirmation
-const searchDatabase = tool({
-  description: "Search the database for user records",
+// Demonstrates: External service integration, user credit validation, complex filtering
+const queryCollection = tool({
+  description: "Perform semantic searches through historical document collections",
   parameters: z.object({
     query: z.string(),
-    limit: z.number().optional(),
+    doc_id: z.string().optional(),
+    authored_start_year_month: z.string().optional(),
+    authored_end_year_month: z.string().optional(),
   }),
-  // No execute function = requires confirmation
-});
-
-// Example of an auto-executing tool
-const getCurrentTime = tool({
-  description: "Get current server time",
-  parameters: z.object({}),
-  execute: async () => new Date().toISOString(),
-});
-
-// Scheduling tool implementation
-const scheduleTask = tool({
-  description:
-    "schedule a task to be executed at a later time. 'when' can be a date, a delay in seconds, or a cron pattern.",
-  parameters: z.object({
-    type: z.enum(["scheduled", "delayed", "cron"]),
-    when: z.union([z.number(), z.string()]),
-    payload: z.string(),
-  }),
-  execute: async ({ type, when, payload }) => {
-    // ... see the implementation in tools.ts
-  },
+  execute: async ({ query, doc_id, authored_start_year_month, authored_end_year_month }) => {
+    // 1. Validate user credits via RPC to financial worker
+    // 2. Build complex search filters
+    // 3. Execute vector search via service binding
+    // 4. Deduct credits on success
+    // 5. Return structured results
+  }
 });
 ```
 
-To handle tool confirmations, add execution functions to the `executions` object:
+**Key Learnings:**
+- Pre-validation of user permissions/credits before expensive operations
+- Complex parameter handling with optional date filtering
+- External service integration via Cloudflare service bindings
+- Automatic cost tracking and deduction
 
+#### Document Retrieval Tool (`getDocumentText`)
 ```typescript
+// Demonstrates: Simple R2 integration, error handling
+const getDocumentText = tool({
+  description: "get the text of a given document from the R2 bucket",
+  parameters: z.object({ r2Key: z.string() }),
+  execute: async ({ r2Key }) => {
+    const bucket = agent.getBucket();
+    const file = await bucket.get(r2Key);
+    return file ? await file.text() : { error: "File not found" };
+  }
+});
+```
+
+**Key Learnings:**
+- Direct cloud storage integration
+- Graceful error handling
+- Agent context access patterns
+
+#### Feedback System (`submitFeedback`)
+```typescript
+// Demonstrates: Human-in-the-loop, conversation filtering, KV storage
+const submitFeedback = tool({
+  description: "Submits feedback about technical issues or user experience",
+  parameters: z.object({
+    description: z.string()
+  }),
+  // No execute function = requires human confirmation
+});
+
 export const executions = {
-  searchDatabase: async ({
-    query,
-    limit,
-  }: {
-    query: string;
-    limit?: number;
-  }) => {
-    // Implementation for when the tool is confirmed
-    const results = await db.search(query, limit);
-    return results;
-  },
-  // Add more execution handlers for other tools that require confirmation
+  submitFeedback: async ({ description }) => {
+    // 1. Filter conversation history for privacy
+    // 2. Generate unique report ID
+    // 3. Store in KV with metadata
+    // 4. Return confirmation
+  }
 };
 ```
 
-Tools can be configured in two ways:
+**Key Learnings:**
+- Human-in-the-loop confirmation patterns
+- Conversation filtering for data privacy
+- Structured feedback collection
+- KV storage for operational data
 
-1. With an `execute` function for automatic execution
-2. Without an `execute` function, requiring confirmation and using the `executions` object to handle the confirmed action
+### 2. Real-time Chat Architecture
 
-### Use a different AI model provider
+The chat system demonstrates sophisticated real-time patterns:
 
-The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but you can use any AI model provider by:
+```typescript
+// In Chat Durable Object
+async onChatMessage(onFinish: StreamTextOnFinishCallback) {
+  return agentContext.run(this, async () => {
+    const dataStreamResponse = createDataStreamResponse({
+      execute: async (dataStream) => {
+        // Process pending tool calls (human-in-the-loop)
+        const processedMessages = await processToolCalls({
+          messages: this.messages,
+          dataStream,
+          tools,
+          executions,
+        });
 
-1. Installing an alternative AI provider for the `ai-sdk`, such as the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) or [`anthropic`](https://sdk.vercel.ai/providers/ai-sdk-providers/anthropic) provider:
-2. Replacing the AI SDK with the [OpenAI SDK](https://github.com/openai/openai-node)
-3. Using the Cloudflare [Workers AI + AI Gateway](https://developers.cloudflare.com/ai-gateway/providers/workersai/#workers-binding) binding API directly
+        // Stream AI response with tool integration
+        const result = streamText({
+          model: openai("gpt-4o-2024-11-20"),
+          system: getSystemPrompt(),
+          messages: processedMessages,
+          tools,
+          onFinish: async (event) => {
+            // Log conversation for analytics
+            await this.conversationLogger.processStreamCompletion(
+              event, this.messages, this.userId, this.collectionId, this.convoId
+            );
+          }
+        });
 
-For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai), install the package:
-
-```sh
-npm install workers-ai-provider
+        result.mergeIntoDataStream(dataStream);
+      }
+    });
+  });
+}
 ```
 
-Add an `ai` binding to `wrangler.jsonc`:
+**Key Learnings:**
+- AsyncLocalStorage for agent context sharing
+- Tool call processing with human confirmation
+- Real-time streaming with conversation logging
+- Error handling in streaming contexts
 
-```jsonc
-// rest of file
-  "ai": {
-    "binding": "AI"
+### 3. Production Frontend Patterns
+
+The React frontend showcases several production-ready patterns:
+
+#### Smart Citation Handling
+```typescript
+// Automatic citation rendering in markdown
+// {{cite:r2Key}} becomes clickable footnote
+useEffect(() => {
+  const handleGlobalCitationClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('citation')) {
+      const r2Key = target.getAttribute('data-r2key');
+      if (r2Key) {
+        window.open(`https://doc-viewer.ramus.network/${r2Key}`, '_blank');
+      }
+    }
+  };
+  document.addEventListener('click', handleGlobalCitationClick);
+}, []);
+```
+
+#### Connection Health Management
+```typescript
+// Keep-alive mechanism for Durable Objects
+useEffect(() => {
+  const sendKeepAlive = async () => {
+    // Ping every 45 seconds to maintain connection
+  };
+  const interval = setInterval(sendKeepAlive, 45000);
+  return () => clearInterval(interval);
+}, [agent, conversationId]);
+```
+
+#### Progressive Loading States
+```typescript
+// Multiple loading states: submitting -> streaming -> ready
+const [isSubmitting, setIsSubmitting] = useState(false);
+const [isLimbo, setIsLimbo] = useState(false);
+
+// Timeout detection for stuck requests
+useEffect(() => {
+  if (status === 'submitted') {
+    const timeout = setTimeout(() => {
+      console.log('Status remained submitted too long - reloading');
+      window.location.reload();
+    }, 10000);
+    return () => clearTimeout(timeout);
   }
-// rest of file
+}, [status]);
 ```
 
-Replace the `@ai-sdk/openai` import and usage with the `workers-ai-provider`:
+### 4. Authentication & Session Management
 
-```diff
-// server.ts
-// Change the imports
-- import { createOpenAI } from "@ai-sdk/openai";
-+ import { createWorkersAI } from 'workers-ai-provider';
+The system implements a sophisticated OAuth flow:
 
-// Create a Workers AI instance
-- const openai = createOpenAI({
--     apiKey: this.env.OPENAI_API_KEY,
-- });
-+ const workersai = createWorkersAI({ binding: env.AI });
+```typescript
+// PKCE flow with session management
+export const useAuth = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-// Use it when calling the streamText method (or other methods)
-// from the ai-sdk
-- const result = streamText({
--    model: openai("gpt-4o-2024-11-20"),
-+ const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b")
+  // Auto-refresh tokens before expiration
+  useEffect(() => {
+    const checkAndRefreshToken = async () => {
+      const token = sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const timeUntilExpiry = (payload.exp * 1000) - Date.now();
+
+        if (timeUntilExpiry < AUTH_CONFIG.REFRESH_BUFFER) {
+          // Refresh token logic
+        }
+      }
+    };
+
+    const interval = setInterval(checkAndRefreshToken, 60000);
+    return () => clearInterval(interval);
+  }, []);
+};
 ```
 
-Commit your changes and then run the `agents-starter` as per the rest of this README.
+## System Prompt Engineering
 
-### Modifying the UI
+The system includes a sophisticated 279-line system prompt that demonstrates:
 
-The chat interface is built with React and can be customized in `app.tsx`:
+- **Research Planning**: Multi-step query decomposition
+- **Search Strategy**: Date filtering, query optimization
+- **Citation Standards**: Structured document attribution
+- **Error Handling**: Graceful failure recovery
+- **User Interaction**: Clarifying questions, feedback loops
 
-- Modify the theme colors in `styles.css`
-- Add new UI components in the chat container
-- Customize message rendering and tool confirmation dialogs
-- Add new controls to the header
+## Production Deployment Considerations
 
-### Example Use Cases
+### Cloudflare Configuration
+```jsonc
+{
+  "name": "history-lab-chat-agent-3",
+  "durable_objects": {
+    "bindings": [{ "name": "Chat", "class_name": "Chat" }]
+  },
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "ramus-files" }
+  ],
+  "services": [
+    { "binding": "VECTORIZE_SEARCH", "service": "vector-search-worker-3" }
+  ],
+  "kv_namespaces": [
+    { "binding": "CONVERSATION_LOGS", "id": "..." },
+    { "binding": "FEEDBACK_LOGS", "id": "..." }
+  ]
+}
+```
 
-1. **Customer Support Agent**
+### Environment Variables
+```bash
+# AI Model API Keys
+OPENAI_API_KEY=sk-...
+GOOGLE_GENERATIVE_AI_API_KEY=...
 
-   - Add tools for:
-     - Ticket creation/lookup
-     - Order status checking
-     - Product recommendations
-     - FAQ database search
+# External Service URLs
+VECTORIZE_SEARCH_URL=https://...
+FINANCIAL_WORKER_URL=https://...
+```
 
-2. **Development Assistant**
+## What You Can Learn From This Example
 
-   - Integrate tools for:
-     - Code linting
-     - Git operations
-     - Documentation search
-     - Dependency checking
+### For AI Agent Builders:
+1. **Tool Design Patterns**: Simple tools vs. complex workflows
+2. **Human-in-the-Loop**: When and how to require confirmations
+3. **External Service Integration**: Service bindings, RPC patterns
+4. **Context Management**: Agent state, conversation history
+5. **Error Handling**: Graceful degradation, user feedback
 
-3. **Data Analysis Assistant**
+### For Frontend Developers:
+1. **Real-time UI**: Streaming responses, progressive loading
+2. **Citation Systems**: Dynamic content rendering
+3. **Connection Management**: Keep-alive, reconnection logic
+4. **Authentication Flow**: OAuth, session management
+5. **Mobile Considerations**: iframe detection, responsive design
 
-   - Build tools for:
-     - Database querying
-     - Data visualization
-     - Statistical analysis
-     - Report generation
+### For System Architects:
+1. **Multi-Worker Architecture**: Service decomposition
+2. **Data Storage Patterns**: R2, KV, Durable Objects
+3. **Cost Management**: Credit systems, usage tracking
+4. **Observability**: Logging, monitoring, debugging
+5. **Scalability**: Stateful vs. stateless components
 
-4. **Personal Productivity Assistant**
+## Technology Stack
 
-   - Implement tools for:
-     - Task scheduling with flexible timing options
-     - One-time, delayed, and recurring task management
-     - Task tracking with reminders
-     - Email drafting
-     - Note taking
+- **Frontend**: React 19, TypeScript, Tailwind CSS
+- **Backend**: Cloudflare Workers, Durable Objects
+- **AI**: OpenAI GPT-4, Google Gemini, Vercel AI SDK
+- **Storage**: Cloudflare R2, KV
+- **Search**: Custom vector search worker
+- **Auth**: Google OAuth with PKCE
+- **Build**: Vite, TypeScript, Biome
 
-5. **Scheduling Assistant**
-   - Build tools for:
-     - One-time event scheduling using specific dates
-     - Delayed task execution (e.g., "remind me in 30 minutes")
-     - Recurring tasks using cron patterns
-     - Task payload management
-     - Flexible scheduling patterns
+## Repository Structure
 
-Each use case can be implemented by:
+```
+src/
+├── app.tsx                 # Main React application
+├── server/
+│   ├── index.ts           # Worker entry point
+│   ├── models/chat.ts     # Chat Durable Object
+│   ├── config.ts          # System prompt & settings
+│   ├── handlers/          # Request handlers
+│   ├── services/          # Business logic
+│   └── utils/             # Helper functions
+├── components/
+│   ├── chat/              # Chat UI components
+│   ├── auth/              # Authentication UI
+│   └── ui/                # Reusable components
+├── hooks/                 # React hooks
+├── tools.ts               # AI tool definitions
+└── config.ts              # App configuration
+```
 
-1. Adding relevant tools in `tools.ts`
-2. Customizing the UI for specific interactions
-3. Extending the agent's capabilities in `server.ts`
-4. Adding any necessary external API integrations
+## Key Dependencies
 
-## Learn More
+```json
+{
+  "agents-sdk": "^0.0.23",           // Cloudflare Agents framework
+  "ai": "^4.1.51",                  // Vercel AI SDK
+  "@ai-sdk/openai": "^1.2.0",       // OpenAI integration
+  "@ai-sdk/google": "^1.2.10",      // Google AI integration
+  "react": "^19.0.0",               // Frontend framework
+  "react-router-dom": "^7.5.3",     // Client-side routing
+  "zod": "^3.24.2"                  // Schema validation
+}
+```
 
-- [`agents-sdk`](https://github.com/cloudflare/agents/blob/main/packages/agents/README.md)
-- [Cloudflare Agents Documentation](https://developers.cloudflare.com/agents/)
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
+## Running This Example
+
+> **⚠️ Important**: This is a production system with specific external dependencies. You cannot run it directly without:
+> - Vector search worker deployment
+> - Document storage setup
+> - Authentication service configuration
+
+To explore the code:
+
+```bash
+# Install dependencies
+npm install
+
+# View the code structure
+npm run check
+
+# Build (will fail without proper env setup)
+npm run deploy
+```
+
+## Inspiration for Your Own System
+
+Instead of copying this code, use it as inspiration for:
+
+1. **RAG System Architecture**: How to structure document retrieval
+2. **Tool Design Patterns**: Building AI tools that work well
+3. **Production Considerations**: Authentication, logging, error handling
+4. **UI/UX Patterns**: Real-time chat, citation handling
+5. **Cloudflare Integration**: Workers, Durable Objects, service bindings
+
+## Related Resources
+
+- [Columbia University History Lab](https://lab.history.columbia.edu/)
+- [HistoryLab AI (Live System)](https://history-lab.ramus.network)
+- [Cloudflare Agents SDK](https://github.com/cloudflare/agents)
+- [Ramus Network](https://landing.ramus.network)
 
 ## License
 
-MIT
+MIT License - This code is provided as an educational example. See the live system's terms of service for usage of the actual HistoryLab AI service.
+
+---
+
+*Built by the [Columbia University History Lab](https://lab.history.columbia.edu/) team, powered by the [Ramus Network](https://landing.ramus.network) infrastructure.*
